@@ -37,10 +37,10 @@
     <dimen name="edit_uninstall_text_focused_bottom_margin">28.0dip</dimen>
     <dimen name="edit_uninstall_text_size">16.0sp</dimen>
     <dimen name="group_vertical_spacing">32.0dip</dimen>
-    <dimen name="header_height">32.0dip</dimen>
+    <dimen name="header_height">64.0dip</dimen>
     <dimen name="header_text_active_margin_extra">2.0dip</dimen>
     <dimen name="header_text_margin">8.0dip</dimen>
-    <dimen name="header_text_size">18.0sp</dimen>
+    <dimen name="header_text_size">36.0sp</dimen>
     <dimen name="home_screen_bottom_padding">16.0sp</dimen>
     <dimen name="home_screen_selected_row_alignment">135.0dip</dimen>
     <dimen name="home_scroll_animation_threshold">20.0dip</dimen>
@@ -362,7 +362,7 @@
     <dimen name="settings_label_text_size">14.0sp</dimen>
     <dimen name="settings_row_height">146.0dip</dimen>
     <dimen name="settings_text_padding">8.0dip</dimen>
-    <dimen name="temp_max_row_height">126.0dip</dimen>
+    <dimen name="temp_max_row_height">250.0dip</dimen>
     <dimen name="unselected_item_z">6.0dip</dimen>
     <dimen name="vertical_safety_spacing">27.0dip</dimen>
     <dimen name="widget_clock_height">60.0dip</dimen>
