@@ -8,6 +8,38 @@ import com.amazon.tv.firetv.leanbacklauncher.apps.AppCategory
 object AppCategorizer {
 
     private val VIDEO_FILTER = arrayOf(
+        // ========== 中国国内常用视频APP ==========
+        // 短视频平台
+        "com.ss.android.ugc.aweme",      // 抖音
+        "com.ss.android.ugc.live",       // 抖音火山版/火山小视频
+        "com.smile.gifmaker",            // 快手
+        "com.kuaishou.nebula",           // 快手极速版
+        "com.jx.cctv.lianbo",            // 皮皮虾
+        "com.tencent.weishi",            // 微视
+        "com.meitu.mtvideo",             // 美拍
+        "com.yixia.videoeditor",         // 秒拍
+        // 长视频平台
+        "tv.danmaku.bili",               // 哔哩哔哩
+        "com.bilibili.app.in",           // 哔哩哔哩HD
+        "com.tencent.qqlive",            // 腾讯视频
+        "com.qiyi.video",                // 爱奇艺
+        "com.youku.phone",               // 优酷
+        "com.hunantv.mangotv",           // 芒果TV
+        "com.sohu.sohuvideo",            // 搜狐视频
+        "com.pplive.androidtv",          // PPTV
+        "com.migu.video",                // 咪咕视频
+        "com.cctv.yangshipin",           // 央视影音
+        "com.dragon.read",               // 番茄畅听(有视频内容)
+        "com.baidu.haokan",              // 好看视频
+        "com.pearvideo",                 // 梨视频
+        "com.funshion.android.tv",       // 风行视频
+        "com.ss.android.article.video",  // 西瓜视频
+        "com.xingin.xhs",                // 小红书
+        "com.sina.weibo",                // 微博
+        "com.weico.intl",                // 微博国际版
+        "com.netease.cloudmusic",        // 网易云音乐(有视频内容)
+        "com.tencent.karaoke",           // 全民K歌(有视频内容)
+        // ========== 国际视频APP ==========
         "abema",
         "ag.kinom",
         "air.com.vudu",
