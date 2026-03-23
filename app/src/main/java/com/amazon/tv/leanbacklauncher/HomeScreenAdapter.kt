@@ -185,6 +185,18 @@ class HomeScreenAdapter(
                 true
             )
         }
+        // 银行行显示在第一位（在 VIDEO/MUSIC/GAMES 之前）
+        if (enabledCategories.contains(AppCategory.BANK)) {
+            buildRow(
+                RowType.BANK,
+                position++,
+                res.getString(R.string.category_label_bank),
+                null,
+                null,
+                R.dimen.home_scroll_size_apps,
+                true
+            )
+        }
         if (enabledCategories.contains(AppCategory.VIDEO)) {
             buildRow(
                 RowType.VIDEO,
@@ -215,17 +227,6 @@ class HomeScreenAdapter(
                 null,
                 null,
                 R.dimen.home_scroll_size_games,
-                true
-            )
-        }
-        if (enabledCategories.contains(AppCategory.BANK)) {
-            buildRow(
-                RowType.BANK,
-                position++,
-                res.getString(R.string.category_label_bank),
-                null,
-                null,
-                R.dimen.home_scroll_size_apps,
                 true
             )
         }
