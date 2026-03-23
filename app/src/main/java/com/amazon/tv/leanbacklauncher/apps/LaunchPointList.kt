@@ -623,6 +623,12 @@ class LaunchPointList(ctx: Context) {
                 }
             }
 
+            AppCategory.BANK -> for (lp in parentList) {
+                if (!isFavorited(lp.packageName) && !isBlacklisted(lp.packageName) && lp.appCategory == AppCategory.BANK) {
+                    childList.add(lp)
+                }
+            }
+
             AppCategory.OTHER -> for (lp in parentList) {
                 if (!isFavorited(lp.packageName) && !isBlacklisted(lp.packageName) && lp.appCategory == AppCategory.OTHER) {
                     childList.add(lp)

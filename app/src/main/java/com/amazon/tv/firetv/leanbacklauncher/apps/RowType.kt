@@ -14,7 +14,8 @@ enum class RowType(val code: Int) {
     FAVORITES(7),
     MUSIC(8),
     VIDEO(9),
-    ACTUAL_NOTIFICATIONS(10);
+    ACTUAL_NOTIFICATIONS(10),
+    BANK(11);
 
     companion object {
         private val intToType = SparseArray<RowType>()

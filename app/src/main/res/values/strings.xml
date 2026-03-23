@@ -68,6 +68,7 @@
     <string name="category_label_music">Music</string>
     <string name="category_label_settings" />
     <string name="category_label_videos">Video</string>
+    <string name="category_label_bank">银行</string>
     <string name="common_google_play_services_enable_button">Enable</string>
     <string name="common_google_play_services_enable_text">"%1$s won't work unless you enable Google Play services."</string>
     <string name="common_google_play_services_enable_title">Enable Google Play services</string>
@@ -190,6 +191,8 @@
     <string name="pref_enable_music_row" translatable="false">enable_music_row</string>
     <string name="pref_enable_recommendations_row" translatable="false">enable_recommendations_row</string>
     <string name="pref_enable_videos_row" translatable="false">enable_videos_row</string>
+    <string name="pref_enable_bank_row" translatable="false">enable_bank_row</string>
+    <string name="pref_max_bank_rows" translatable="false">max_bank_rows</string>
     <string name="pref_imp_weather" translatable="false">imp_weather</string>
     <string name="pref_show_location" translatable="false">show_location</string>
     <string name="pref_use_current_location" translatable="false">use_current_location</string>
@@ -275,6 +278,8 @@ or recommendations will not work properly."</string>
     <string name="v7_preference_on">ON</string>
     <string name="version">App Version</string>
     <string name="videos_row_title">Show Videos Row</string>
+    <string name="bank_row_title">Show Bank Row</string>
+    <string name="max_bank_rows_title">Max Bank Rows</string>
     <string name="wallpaper_title">Default Wallpaper</string>
     <string name="wallpaper_choose">Put wallpaper image to storage directory root and select here</string>
     <string name="weather_apikey_title">OpenWeatherMap API Key</string>

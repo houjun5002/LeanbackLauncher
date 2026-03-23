@@ -537,6 +537,7 @@ open class AppsAdapter(
             mAppTypes.contains(AppCategory.VIDEO) -> RowType.VIDEO
             mAppTypes.contains(AppCategory.MUSIC) -> RowType.MUSIC
             mAppTypes.contains(AppCategory.GAME) -> RowType.GAMES
+            mAppTypes.contains(AppCategory.BANK) -> RowType.BANK
             this is FavoritesAdapter -> RowType.FAVORITES
             this is SettingsAdapter -> RowType.SETTINGS // TODO
             else -> null
@@ -624,6 +625,11 @@ open class AppsAdapter(
                     AppCategory.GAME -> launchPoints.addAll(
                         mAppsManager!!.getLaunchPointsByCategory(
                             AppCategory.GAME
+                        )
+                    )
+                    AppCategory.BANK -> launchPoints.addAll(
+                        mAppsManager!!.getLaunchPointsByCategory(
+                            AppCategory.BANK
                         )
                     )
                     AppCategory.SETTINGS -> launchPoints.addAll(

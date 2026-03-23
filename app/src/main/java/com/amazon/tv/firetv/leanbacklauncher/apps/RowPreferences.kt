@@ -112,6 +112,11 @@ object RowPreferences {
                 true
             )
         ) categories.add(AppCategory.VIDEO)
+        if (pref.getBoolean(
+                context.getString(R.string.pref_enable_bank_row),
+                true
+            )
+        ) categories.add(AppCategory.BANK)
         return categories
     }
 
@@ -133,6 +138,13 @@ object RowPreferences {
     fun setVideosEnabled(context: Context, value: Boolean): Boolean {
         val pref = PreferenceManager.getDefaultSharedPreferences(context)
         pref.edit().putBoolean(context.getString(R.string.pref_enable_videos_row), value).apply()
+        return true
+    }
+
+    @JvmStatic
+    fun setBankEnabled(context: Context, value: Boolean): Boolean {
+        val pref = PreferenceManager.getDefaultSharedPreferences(context)
+        pref.edit().putBoolean(context.getString(R.string.pref_enable_bank_row), value).apply()
         return true
     }
 
@@ -176,6 +188,12 @@ object RowPreferences {
                     res.getInteger(R.integer.max_num_banner_rows).toString()
                 )?.toIntOrNull() ?: context.resources.getInteger(R.integer.max_num_banner_rows)
             }
+            AppCategory.BANK -> {
+                pref.getString(
+                    context.getString(R.string.pref_max_bank_rows),
+                    res.getInteger(R.integer.max_num_banner_rows).toString()
+                )?.toIntOrNull() ?: context.resources.getInteger(R.integer.max_num_banner_rows)
+            }
             else -> { // AppCategory.OTHER
                 pref.getString(
                     context.getString(R.string.pref_max_apps_rows),
@@ -202,6 +220,11 @@ object RowPreferences {
             AppCategory.VIDEO -> {
                 pref.edit()
                     .putString(context.getString(R.string.pref_max_videos_rows), max.toString())
+                    .apply()
+            }
+            AppCategory.BANK -> {
+                pref.edit()
+                    .putString(context.getString(R.string.pref_max_bank_rows), max.toString())
                     .apply()
             }
             else -> { // AppCategory.OTHER
