@@ -42,6 +42,7 @@
     <string name="category_label_music">音乐</string>
     <string name="category_label_settings" />
     <string name="category_label_videos">视频</string>
+    <string name="category_label_bank">银行</string>
     <string name="common_google_play_services_enable_button">启用</string>
     <string name="common_google_play_services_enable_text">您必须先启用 Google Play 服务，然后才能运行%1$s。</string>
     <string name="common_google_play_services_enable_title">启用 Google Play 服务</string>
@@ -206,6 +207,8 @@
     <string name="user_location_warning">用户位置未在首选项中设置</string>
     <string name="version">应用版本</string>
     <string name="videos_row_title">显示视频栏</string>
+    <string name="bank_row_title">显示银行栏</string>
+    <string name="max_bank_rows_title">银行栏最大行数</string>
     <string name="wallpaper_title">默认壁纸</string>
     <string name="wallpaper_choose">将壁纸图片放到存储目录根目录下并选择这里</string>
     <string name="weather_home_title">天气设置</string>

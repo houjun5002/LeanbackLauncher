@@ -8,7 +8,8 @@ enum class AppCategory(val code: Int) {
     SETTINGS(1),
     VIDEO(2),
     MUSIC(3),
-    GAME(4);
+    GAME(4),
+    BANK(5);
 
     companion object {
         private val intToType = SparseArray<AppCategory>()

@@ -224,6 +224,30 @@ object AppCategorizer {
         "tetris",
         "com.google.stadia",
     )
+    private val BANK_FILTER = arrayOf(
+        // 中国主要银行APP包名
+        "com.icbc",           // 工商银行
+        "com.ccb.smartpos",   // 建设银行
+        "com.chinamworld.main", // 中国银行
+        "com.cmbchina.ccdpluto", // 招商银行
+        "com.abchina.mbank",  // 农业银行
+        "com.bankcomm.Bankcomm", // 交通银行
+        "cn.com.psbc",        // 邮储银行
+        "com.cib.android",    // 兴业银行
+        "com.spdb.app",       // 浦发银行
+        "cn.com.cmbc",        // 民生银行
+        "com.cebbank.mobile", // 光大银行
+        "com.pingan.pabank",  // 平安银行
+        "com.hxb.mobilebank", // 华夏银行
+        "com.cgbchina.phonebank", // 广发银行
+        "com.srcb",           // 上海农商银行
+        "com.bjbank.mobile",  // 北京银行
+        "com.njbank.mobile",  // 南京银行
+        // 添加自定义银行APP包名（用户需要根据实际APP包名调整）
+        "com.bank.app1",      // APP1
+        "com.bank.app2",      // APP2
+        "com.bank.app3",      // APP3
+    )
 
     @Suppress("DEPRECATION")
     fun getAppCategory(pkgName: String?, actInfo: ActivityInfo?): AppCategory {
@@ -241,6 +265,11 @@ object AppCategorizer {
             for (s in GAMES_FILTER) {
                 if (pn.contains(s)) {
                     return AppCategory.GAME
+                }
+            }
+            for (s in BANK_FILTER) {
+                if (pn.contains(s)) {
+                    return AppCategory.BANK
                 }
             }
         }
