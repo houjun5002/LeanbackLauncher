@@ -1604,11 +1604,8 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         // ========== 语音按键处理（Remote X5 BLE 语音遥控器）==========
         // Remote X5 使用 Google GATT Voice Service 标准协议
-        // Service UUID: 0000ffe0-0000-1000-8000-00805f9b34fb
-        // Characteristic UUID: 0000ffe1-0000-1000-8000-00805f9b34fb
-        // 音频编码: IMA-ADPCM (16kHz 单声道)
-        // 
-        // 关键：必须让系统处理按键以建立 BLE 音频通道！
+        // 重要：先启动录音，再让系统处理按键建立BLE通道
+        // 这样可以避免丢失开头的语音
         
         if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
             Log.d(TAG, "onKeyDown: 检测到语音按键 keyCode=$keyCode")
@@ -1621,16 +1618,12 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 return true
             }
             
-            // 按一下就开始录音
-            // 让系统处理按键建立BLE通道，然后立即启动录音
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (!isRecording) {
-                    Log.d(TAG, "onKeyDown: 启动录音（8秒自动停止）")
-                    startMyVoiceAssistant()
-                }
-            }, 300) // 缩短延迟到300ms
+            // 立即启动录音（先于系统处理按键）
+            // 这样当BLE通道建立时，录音已经开始
+            Log.d(TAG, "onKeyDown: 立即启动录音（先于系统处理）")
+            startMyVoiceAssistant()
             
-            // 不拦截，让系统处理按键建立BLE音频通道
+            // 然后让系统处理按键建立BLE音频通道
             return super.onKeyDown(keyCode, event)
         }
 
@@ -1662,12 +1655,15 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 return true
             }
             
-            // 短按释放：不做任何操作
-            // 录音会在8秒后自动停止
+            // 松开按键：停止录音
+            if (isRecording) {
+                Log.d(TAG, "onKeyUp: 停止录音")
+                stopRecording()
+            }
             return true
         }
         
-        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO) {
+        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE.INFO) {
             val selectItem = mListView!!.focusedChild
             if (selectItem is ActiveFrame) {
                 val v = selectItem.mRow
@@ -1723,19 +1719,20 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             return
         }
 
-        // 检测音频输入设备
-        logAudioInputDevices()
+        // 提示用户（快速显示）
+        Toast.makeText(this, "长按语音键说话，松开停止...", Toast.LENGTH_SHORT).show()
         
-        // 检测已配对的蓝牙设备（诊断用）
-        logBluetoothDevices()
-        
-        // 提示用户
-        Toast.makeText(this, "请对着电视内置麦克风说话...", Toast.LENGTH_SHORT).show()
-        
-        // 直接开始录音（使用内置麦克风）
+        // 立即开始录音
         // 注意：BLE HID 语音遥控器需要系统级支持才能路由音频到 AudioRecord
         // 当前设备 Remote X5 是 BLE HID 设备，不支持标准蓝牙音频(SCO)
-        Log.d(TAG, "startMyVoiceAssistant: 使用内置麦克风录音（BLE语音遥控器需要系统级支持）")
+        Log.d(TAG, "startMyVoiceAssistant: 开始录音")
+        
+        // 在后台线程记录诊断信息（不阻塞录音）
+        lifecycleScope.launch(Dispatchers.IO) {
+            logAudioInputDevices()
+            logBluetoothDevices()
+        }
+        
         startRecording()
     }
     
@@ -2148,19 +2145,22 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         try {
             Log.d(TAG, "startRecording: 开始录音")
 
-            // ========== 0. 尝试连接蓝牙音频（让遥控器麦克风路由到系统） ==========
-            val bluetoothConnected = connectBluetoothAudio()
-            if (bluetoothConnected) {
-                Log.d(TAG, "startRecording: 蓝牙音频连接成功，等待音频通道建立...")
-                Thread.sleep(500)  // 等待音频通道建立
-            }
+            // ========== 注意：Remote X5 是 BLE HID 设备，不支持 SCO ==========
+            // BLE GATT Voice Service 由系统自动处理，应用层无法直接控制
+            // 所以跳过 SCO 连接尝试，直接开始录音
+            
+            // 如果想使用蓝牙 SCO 设备（非 BLE HID），可以取消下面的注释
+            // val bluetoothConnected = connectBluetoothAudio()
+            // if (bluetoothConnected) {
+            //     Log.d(TAG, "startRecording: 蓝牙音频连接成功，等待音频通道建立...")
+            //     Thread.sleep(500)  // 等待音频通道建立
+            // }
 
             // ========== 功能1: 检测录音设备 ==========
             val hasMic = checkAudioInputDevice()
             if (!hasMic) {
                 Log.e(TAG, "startRecording: 未检测到录音设备!")
                 Toast.makeText(this, "未检测到录音设备，请检查麦克风连接", Toast.LENGTH_LONG).show()
-                disconnectBluetoothAudio()
                 return
             }
 
@@ -2178,25 +2178,20 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             Log.d(TAG, "startRecording: 录音文件路径: ${audioFile.absolutePath}")
 
             // 初始化 AudioRecord
-            // 尝试多种音频源，优先使用蓝牙麦克风
+            // 尝试多种音频源
             val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
             
-            // 音频源优先级：如果蓝牙已连接，优先使用 VOICE_COMMUNICATION
-            val audioSources = if (bluetoothConnected || scoConnected) {
-                listOf(
-                    MediaRecorder.AudioSource.VOICE_COMMUNICATION to "VOICE_COMMUNICATION",  // 蓝牙通话
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION",
-                    MediaRecorder.AudioSource.MIC to "MIC",
-                    MediaRecorder.AudioSource.DEFAULT to "DEFAULT"
-                )
-            } else {
-                listOf(
-                    MediaRecorder.AudioSource.MIC to "MIC",
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION",
-                    MediaRecorder.AudioSource.CAMCORDER to "CAMCORDER",
-                    MediaRecorder.AudioSource.DEFAULT to "DEFAULT"
-                )
-            }
+            // 音频源优先级：
+            // VOICE_RECOGNITION - 语音识别专用，系统可能会路由蓝牙语音到这个源
+            // VOICE_COMMUNICATION - 语音通话，用于蓝牙耳机
+            // MIC - 默认麦克风
+            val audioSources = listOf(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION",  // 优先：语音识别
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION to "VOICE_COMMUNICATION",  // 蓝牙通话
+                MediaRecorder.AudioSource.MIC to "MIC",
+                MediaRecorder.AudioSource.CAMCORDER to "CAMCORDER",
+                MediaRecorder.AudioSource.DEFAULT to "DEFAULT"
+            )
             
             var initialized = false
             for ((source, sourceName) in audioSources) {
@@ -2255,7 +2250,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     Toast.LENGTH_LONG
                 ).show()
             } else {
-                Toast.makeText(this, "正在录音（8秒）...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "正在录音（松开停止）...", Toast.LENGTH_SHORT).show()
             }
 
             // 使用协程进行录音
@@ -2275,7 +2270,8 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 var warningShown = false  // 是否已显示过警告
 
                 try {
-                    while (isRecording && (System.currentTimeMillis() - startTime) < MAX_RECORD_DURATION) {
+                    // 长按录音：用户松开按键时 isRecording 变为 false，循环结束
+                    while (isRecording) {
                         val bytesRead = audioRecord?.read(buffer, 0, bufferSize) ?: 0
                         if (bytesRead > 0) {
                             outputStream.write(buffer, 0, bytesRead)
