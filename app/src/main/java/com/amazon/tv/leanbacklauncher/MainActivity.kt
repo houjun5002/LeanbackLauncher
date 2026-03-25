@@ -1637,8 +1637,70 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         // 检测音频输入设备
         logAudioInputDevices()
         
+        // 检测已配对的蓝牙设备
+        logBluetoothDevices()
+        
         // 尝试启动蓝牙SCO音频连接
         startBluetoothScoAudio()
+    }
+    
+    /**
+     * 检测已配对的蓝牙设备
+     */
+    @android.annotation.SuppressLint("MissingPermission")
+    private fun logBluetoothDevices() {
+        Log.d(TAG, "========== 蓝牙设备检测 ==========")
+        
+        try {
+            val bluetoothAdapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+            if (bluetoothAdapter == null) {
+                Log.d(TAG, "设备不支持蓝牙")
+                return
+            }
+            
+            if (!bluetoothAdapter.isEnabled) {
+                Log.d(TAG, "蓝牙未开启")
+                return
+            }
+            
+            val pairedDevices = bluetoothAdapter.bondedDevices
+            Log.d(TAG, "已配对蓝牙设备: ${pairedDevices.size} 个")
+            
+            pairedDevices.forEachIndexed { index, device ->
+                val deviceName = device.name ?: "未命名"
+                val deviceAddress = device.address
+                val deviceType = when (device.type) {
+                    android.bluetooth.BluetoothDevice.DEVICE_TYPE_CLASSIC -> "经典蓝牙"
+                    android.bluetooth.BluetoothDevice.DEVICE_TYPE_LE -> "低功耗蓝牙(BLE)"
+                    android.bluetooth.BluetoothDevice.DEVICE_TYPE_DUAL -> "双模"
+                    else -> "未知类型(${device.type})"
+                }
+                
+                // 检查设备支持的 UUID（服务）
+                val uuids = device.uuids?.map { it.toString() } ?: emptyList()
+                val hasAudio = uuids.any { 
+                    it.contains("Audio", ignoreCase = true) || 
+                    it.contains("A2DP", ignoreCase = true) ||
+                    it.contains("HFP", ignoreCase = true) ||
+                    it.contains("HSP", ignoreCase = true) ||
+                    it.contains("SCO", ignoreCase = true)
+                }
+                val hasHid = uuids.any { it.contains("HID", ignoreCase = true) }
+                
+                Log.d(TAG, "  [$index] $deviceName ($deviceType)")
+                Log.d(TAG, "       地址: $deviceAddress")
+                Log.d(TAG, "       支持音频: $hasAudio")
+                Log.d(TAG, "       支持HID: $hasHid")
+                if (uuids.isNotEmpty()) {
+                    Log.d(TAG, "       UUID: ${uuids.take(3).joinToString(", ")}${if (uuids.size > 3) "..." else ""}")
+                }
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "logBluetoothDevices: 检测失败", e)
+        }
+        
+        Log.d(TAG, "======================================")
     }
     
     /**
@@ -1707,6 +1769,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     private fun stopBluetoothScoAudio() {
         try {
             audioManager?.stopBluetoothSco()
+            audioManager?.mode = android.media.AudioManager.MODE_NORMAL
             try {
                 unregisterReceiver(scoStateReceiver)
             } catch (e: Exception) {
