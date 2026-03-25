@@ -160,6 +160,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
         private const val MAX_RECORD_DURATION = 10000L // 最大录音时长30秒
+        private const val LONG_PRESS_DURATION = 2000L // 长按2秒触发BLE扫描
 
         fun isMediaKey(keyCode: Int): Boolean {
             return when (keyCode) {
@@ -207,6 +208,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     private var isRecording = false
     private var recordingJob: Job? = null
     private val okHttpClient by lazy { OkHttpClient.Builder().build() }
+    private var voiceKeyDownTime = 0L // 语音键按下时间（用于长按检测）
     // =======================================
 
     // Core components
@@ -1558,12 +1560,11 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // 语音按键：不拦截，让系统处理建立蓝牙音频通道
-        // 然后在 onKeyUp 中启动我们的录音
+        // 语音按键：记录按下时间（用于长按检测）
         if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
-            Log.d(TAG, "onKeyDown: 检测到语音按键 keyCode=$keyCode，让系统先处理")
+            Log.d(TAG, "onKeyDown: 检测到语音按键 keyCode=$keyCode")
+            voiceKeyDownTime = System.currentTimeMillis()
             // 不返回 true，让系统继续处理
-            // 系统会启动语音服务并建立蓝牙音频通道
         }
 
         return if (mLaunchAnimation.isPrimed || mLaunchAnimation.isRunning || mEditModeAnimation.isPrimed || mEditModeAnimation.isRunning) {
@@ -1579,9 +1580,23 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        // 语音按键释放时启动录音
+        // 语音按键释放
         if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
-            Log.d(TAG, "onKeyUp: 语音按键释放，启动录音")
+            val pressDuration = System.currentTimeMillis() - voiceKeyDownTime
+            Log.d(TAG, "onKeyUp: 语音按键释放，按下时长=${pressDuration}ms")
+            
+            // 长按超过2秒：启动BLE扫描
+            if (pressDuration >= LONG_PRESS_DURATION) {
+                Log.d(TAG, "onKeyUp: 长按检测，启动BLE扫描")
+                Toast.makeText(this, "正在扫描BLE设备...", Toast.LENGTH_SHORT).show()
+                lifecycleScope.launch {
+                    scanBleDevices()
+                }
+                return true
+            }
+            
+            // 短按：启动录音
+            Log.d(TAG, "onKeyUp: 短按，启动录音")
             // 延迟一下，让系统有时间建立蓝牙音频通道
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 startMyVoiceAssistant()
@@ -1733,6 +1748,88 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         }
         
         Log.d(TAG, "======================================")
+    }
+
+    /**
+     * 扫描BLE设备并分析GATT服务
+     * 用于诊断BLE HID语音遥控器的音频传输协议
+     */
+    private suspend fun scanBleDevices() {
+        Log.d(TAG, "scanBleDevices: 开始扫描BLE设备")
+        
+        try {
+            val bleScanner = com.amazon.tv.leanbacklauncher.ble.BleAudioScanner(this)
+            
+            // 检查蓝牙权限
+            if (!bleScanner.hasBluetoothPermissions()) {
+                Log.w(TAG, "scanBleDevices: 缺少蓝牙权限")
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "缺少蓝牙权限", Toast.LENGTH_LONG).show()
+                }
+                return
+            }
+            
+            // 获取已连接的BLE设备
+            val devices = bleScanner.getConnectedBleDevices()
+            Log.d(TAG, "scanBleDevices: 发现 ${devices.size} 个BLE设备")
+            
+            if (devices.isEmpty()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "未发现已配对的BLE设备", Toast.LENGTH_LONG).show()
+                }
+                return
+            }
+            
+            // 扫描每个设备的服务
+            for (device in devices) {
+                Log.d(TAG, "scanBleDevices: 扫描设备 ${device.name} (${device.address})")
+                
+                val result = bleScanner.scanDeviceServices(device)
+                
+                result.onSuccess { discoveredDevice ->
+                    val report = bleScanner.generateReport(discoveredDevice)
+                    Log.d(TAG, report)
+                    
+                    // 查找可能的音频特征
+                    val audioChars = discoveredDevice.services
+                        .flatMap { it.characteristics }
+                        .filter { it.isAudioRelated }
+                    
+                    withContext(Dispatchers.Main) {
+                        if (audioChars.isNotEmpty()) {
+                            val message = buildString {
+                                append("发现可能的音频特征:\n")
+                                audioChars.forEach { char ->
+                                    append("• ${char.uuid.substring(0, 8)}...\n")
+                                    append("  属性: ${char.propertiesStr}\n")
+                                }
+                            }
+                            Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(
+                                this@MainActivity, 
+                                "扫描完成，未发现明显的音频特征\n详细信息已输出到日志", 
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }.onFailure { e ->
+                    Log.e(TAG, "scanBleDevices: 扫描设备失败", e)
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            this@MainActivity, 
+                            "扫描失败: ${e.message}", 
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "scanBleDevices: 扫描异常", e)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@MainActivity, "扫描异常: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     /**
