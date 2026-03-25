@@ -1883,11 +1883,126 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     /**
+     * 功能1: 检测是否有可用的录音设备
+     * @return true 有录音设备，false 无录音设备
+     */
+    private fun checkAudioInputDevice(): Boolean {
+        Log.d(TAG, "========== 检测录音设备 ==========")
+        
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val audioManager = getSystemService(android.media.AudioManager::class.java)
+                val devices = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS)
+                
+                if (devices.isEmpty()) {
+                    Log.e(TAG, "checkAudioInputDevice: 未检测到任何音频输入设备!")
+                    return false
+                }
+                
+                Log.d(TAG, "checkAudioInputDevice: 检测到 ${devices.size} 个音频输入设备:")
+                
+                // 检查是否有有效的麦克风
+                val validMicTypes = listOf(
+                    android.media.AudioDeviceInfo.TYPE_BUILTIN_MIC,      // 内置麦克风
+                    android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO,    // 蓝牙SCO
+                    android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET,    // 有线耳机
+                    android.media.AudioDeviceInfo.TYPE_USB_DEVICE        // USB设备
+                )
+                
+                var hasValidMic = false
+                devices.forEach { device ->
+                    val typeStr = when (device.type) {
+                        android.media.AudioDeviceInfo.TYPE_BUILTIN_MIC -> "内置麦克风 ✓"
+                        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "蓝牙麦克风 ✓"
+                        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "蓝牙A2DP"
+                        android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET -> "有线耳机 ✓"
+                        android.media.AudioDeviceInfo.TYPE_USB_DEVICE -> "USB设备 ✓"
+                        else -> "类型${device.type}"
+                    }
+                    Log.d(TAG, "  - $typeStr: ${device.productName}")
+                    
+                    if (device.type in validMicTypes) {
+                        hasValidMic = true
+                    }
+                }
+                
+                if (hasValidMic) {
+                    Log.d(TAG, "checkAudioInputDevice: 检测到有效麦克风 ✓")
+                } else {
+                    Log.e(TAG, "checkAudioInputDevice: 未检测到有效麦克风!")
+                }
+                
+                Log.d(TAG, "======================================")
+                return hasValidMic
+                
+            } else {
+                // Android M 以下版本，假设有麦克风
+                Log.d(TAG, "checkAudioInputDevice: Android < M，假设有麦克风")
+                return true
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "checkAudioInputDevice: 检测失败", e)
+            return false
+        }
+    }
+
+    /**
+     * 功能2: 清理旧的录音文件，防止缓存变大
+     */
+    private fun cleanOldRecordings() {
+        try {
+            val audioDir = File(getExternalFilesDir(null), "voice_recordings")
+            
+            if (!audioDir.exists() || !audioDir.isDirectory) {
+                Log.d(TAG, "cleanOldRecordings: 录音目录不存在，无需清理")
+                return
+            }
+            
+            val files = audioDir.listFiles()
+            if (files.isNullOrEmpty()) {
+                Log.d(TAG, "cleanOldRecordings: 没有旧录音文件")
+                return
+            }
+            
+            var deletedCount = 0
+            var totalSize = 0L
+            
+            files.forEach { file ->
+                if (file.isFile && file.name.endsWith(".wav")) {
+                    totalSize += file.length()
+                    if (file.delete()) {
+                        deletedCount++
+                        Log.d(TAG, "cleanOldRecordings: 删除文件 ${file.name}")
+                    } else {
+                        Log.w(TAG, "cleanOldRecordings: 删除失败 ${file.name}")
+                    }
+                }
+            }
+            
+            Log.d(TAG, "cleanOldRecordings: 清理完成，删除 $deletedCount 个文件，释放 ${totalSize / 1024}KB")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "cleanOldRecordings: 清理失败", e)
+        }
+    }
+
+    /**
      * 开始录音
      */
     private fun startRecording() {
         try {
             Log.d(TAG, "startRecording: 开始录音")
+
+            // ========== 功能1: 检测录音设备 ==========
+            val hasMic = checkAudioInputDevice()
+            if (!hasMic) {
+                Log.e(TAG, "startRecording: 未检测到录音设备!")
+                Toast.makeText(this, "未检测到录音设备，请检查麦克风连接", Toast.LENGTH_LONG).show()
+                return
+            }
+
+            // ========== 功能2: 清理旧的录音文件 ==========
+            cleanOldRecordings()
 
             // 创建录音文件 - 保存到外部存储目录（用户可访问）
             val audioDir = File(getExternalFilesDir(null), "voice_recordings")
