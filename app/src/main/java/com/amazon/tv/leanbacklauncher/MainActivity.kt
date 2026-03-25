@@ -1733,26 +1733,25 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         val byteRate = sampleRate * channels * bitsPerSample / 8
         val blockAlign = channels * bitsPerSample / 8
 
-        outputStream.use { it ->
-            // RIFF header
-            it.write("RIFF".toByteArray())
-            it.write(intToByteArray(36 + dataLength, 4)) // File length
-            it.write("WAVE".toByteArray())
+        // 不使用 .use{}，因为流需要在录音过程中保持打开
+        // RIFF header
+        outputStream.write("RIFF".toByteArray())
+        outputStream.write(intToByteArray(36 + dataLength, 4)) // File length
+        outputStream.write("WAVE".toByteArray())
 
-            // fmt chunk
-            it.write("fmt ".toByteArray())
-            it.write(intToByteArray(16, 4)) // Subchunk1Size
-            it.write(intToByteArray(1, 2))  // AudioFormat (PCM)
-            it.write(intToByteArray(channels, 2)) // NumChannels
-            it.write(intToByteArray(sampleRate, 4)) // SampleRate
-            it.write(intToByteArray(byteRate, 4))   // ByteRate
-            it.write(intToByteArray(blockAlign, 2)) // BlockAlign
-            it.write(intToByteArray(bitsPerSample, 2)) // BitsPerSample
+        // fmt chunk
+        outputStream.write("fmt ".toByteArray())
+        outputStream.write(intToByteArray(16, 4)) // Subchunk1Size
+        outputStream.write(intToByteArray(1, 2))  // AudioFormat (PCM)
+        outputStream.write(intToByteArray(channels, 2)) // NumChannels
+        outputStream.write(intToByteArray(sampleRate, 4)) // SampleRate
+        outputStream.write(intToByteArray(byteRate, 4))   // ByteRate
+        outputStream.write(intToByteArray(blockAlign, 2)) // BlockAlign
+        outputStream.write(intToByteArray(bitsPerSample, 2)) // BitsPerSample
 
-            // data chunk
-            it.write("data".toByteArray())
-            it.write(intToByteArray(dataLength, 4)) // Subchunk2Size
-        }
+        // data chunk
+        outputStream.write("data".toByteArray())
+        outputStream.write(intToByteArray(dataLength, 4)) // Subchunk2Size
     }
 
     /**
