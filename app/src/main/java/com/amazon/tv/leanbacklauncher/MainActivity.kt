@@ -1686,15 +1686,30 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     it.contains("SCO", ignoreCase = true)
                 }
                 val hasHid = uuids.any { it.contains("HID", ignoreCase = true) }
+                val hasVoice = uuids.any { 
+                    it.contains("Voice", ignoreCase = true) ||
+                    it.contains("1812", ignoreCase = true) // HID over GATT
+                }
                 
                 Log.d(TAG, "  [$index] $deviceName ($deviceType)")
                 Log.d(TAG, "       地址: $deviceAddress")
-                Log.d(TAG, "       支持音频: $hasAudio")
+                Log.d(TAG, "       支持音频协议: $hasAudio")
                 Log.d(TAG, "       支持HID: $hasHid")
+                Log.d(TAG, "       支持语音: $hasVoice")
+                
+                // 打印所有 UUID（帮助诊断）
                 if (uuids.isNotEmpty()) {
-                    Log.d(TAG, "       UUID: ${uuids.take(3).joinToString(", ")}${if (uuids.size > 3) "..." else ""}")
+                    Log.d(TAG, "       所有UUID:")
+                    uuids.forEachIndexed { i, uuid ->
+                        Log.d(TAG, "         [$i] $uuid")
+                    }
                 }
             }
+            
+            // 检查蓝牙音频状态
+            Log.d(TAG, "--- 蓝牙音频状态 ---")
+            Log.d(TAG, "SCO是否可用: ${audioManager?.isBluetoothScoAvailableOffCall}")
+            Log.d(TAG, "蓝牙A2DP: ${bluetoothAdapter.isBluetoothA2dpOn}")
             
         } catch (e: Exception) {
             Log.e(TAG, "logBluetoothDevices: 检测失败", e)
