@@ -1644,8 +1644,15 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         try {
             Log.d(TAG, "startRecording: 开始录音")
 
-            // 创建录音文件
-            val audioFile = File(cacheDir, "voice_recording_${System.currentTimeMillis()}.wav")
+            // 创建录音文件 - 保存到外部存储目录（用户可访问）
+            val audioDir = File(getExternalFilesDir(null), "voice_recordings")
+            if (!audioDir.exists()) {
+                audioDir.mkdirs()
+                Log.d(TAG, "startRecording: 创建目录 ${audioDir.absolutePath}")
+            }
+            
+            val audioFile = File(audioDir, "voice_recording_${System.currentTimeMillis()}.wav")
+            Log.d(TAG, "startRecording: 录音文件路径: ${audioFile.absolutePath}")
 
             // 初始化 AudioRecord
             val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
