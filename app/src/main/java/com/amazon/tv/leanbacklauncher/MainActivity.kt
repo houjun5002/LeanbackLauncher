@@ -47,6 +47,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import okio.Buffer
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.res.ResourcesCompat
@@ -1800,6 +1801,16 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     .addFormDataPart("file", audioFile.name, requestBody)
                     .addFormDataPart("model", "FunAudioLLM/whisper")
                     .build()
+
+                // 打印请求body内容
+                val buffer = Buffer()
+                multipartBody.writeTo(buffer)
+                Log.d(TAG, "========== 请求Body开始 ==========")
+                Log.d(TAG, "URL: $ZHIPU_API_URL")
+                Log.d(TAG, "Authorization: Bearer ${ZHIPU_API_KEY.take(20)}...")
+                Log.d(TAG, "Content-Type: ${multipartBody.contentType()}")
+                Log.d(TAG, "Body预览(前500字符): ${buffer.readUtf8().take(500)}")
+                Log.d(TAG, "========== 请求Body结束 ==========")
 
                 val request = Request.Builder()
                     .url(ZHIPU_API_URL)
