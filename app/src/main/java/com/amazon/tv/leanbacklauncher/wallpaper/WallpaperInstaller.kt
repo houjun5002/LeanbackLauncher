@@ -80,7 +80,7 @@ class WallpaperInstaller private constructor(context: Context) {
                     ResourcesCompat.getDrawable(resources, R.drawable.bg_ftv_blue, null)
                 } else if (Build.BRAND == "Amazon" && Build.VERSION.RELEASE == "9") {
                     ResourcesCompat.getDrawable(resources, R.drawable.bg_ftv_gray, null)
-                } else ResourcesCompat.getDrawable(resources, R.drawable.bg_default, null)
+                } else ResourcesCompat.getDrawable(resources, R.drawable.bg_default_hb, null)
 
             // ContextCompat.getDrawable(mContext, R.drawable.bg_default)
             val intrinsicWidth = systemBg?.intrinsicWidth ?: 1920
