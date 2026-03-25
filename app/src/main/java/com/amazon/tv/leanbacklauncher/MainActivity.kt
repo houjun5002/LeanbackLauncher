@@ -1634,8 +1634,65 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             return
         }
 
+        // 检测音频输入设备
+        logAudioInputDevices()
+        
         // 开始录音
         startRecording()
+    }
+
+    /**
+     * 检测并打印音频输入设备信息
+     */
+    private fun logAudioInputDevices() {
+        Log.d(TAG, "========== 音频输入设备检测 ==========")
+        
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val audioManager = getSystemService(android.media.AudioManager::class.java)
+                val devices = audioManager.getDevices(android.media.AudioManager.GET_DEVICES_INPUTS)
+                
+                Log.d(TAG, "检测到 ${devices.size} 个音频输入设备:")
+                devices.forEachIndexed { index, device ->
+                    val typeStr = when (device.type) {
+                        android.media.AudioDeviceInfo.TYPE_BUILTIN_MIC -> "内置麦克风"
+                        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "蓝牙SCO音频"
+                        android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "蓝牙A2DP"
+                        android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET -> "有线耳机"
+                        android.media.AudioDeviceInfo.TYPE_USB_DEVICE -> "USB设备"
+                        android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY -> "USB配件"
+                        android.media.AudioDeviceInfo.TYPE_DOCK -> "底座"
+                        android.media.AudioDeviceInfo.TYPE_FM -> "FM"
+                        android.media.AudioDeviceInfo.TYPE_BUILTIN_MICROPHONE -> "内置麦克风2"
+                        android.media.AudioDeviceInfo.TYPE_FM_TUNER -> "FM调谐器"
+                        android.media.AudioDeviceInfo.TYPE_TV_TUNER -> "TV调谐器"
+                        android.media.AudioDeviceInfo.TYPE_TELEPHONY -> "电话"
+                        android.media.AudioDeviceInfo.TYPE_AUX_LINE -> "AUX线路"
+                        android.media.AudioDeviceInfo.TYPE_IP -> "网络"
+                        android.media.AudioDeviceInfo.TYPE_BUS -> "总线"
+                        android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "USB耳机"
+                        android.media.AudioDeviceInfo.TYPE_HEARING_AID -> "助听器"
+                        android.media.AudioDeviceInfo.TYPE_HDMI -> "HDMI"
+                        android.media.AudioDeviceInfo.TYPE_HDMI_ARC -> "HDMI_ARC"
+                        else -> "未知类型(${device.type})"
+                    }
+                    Log.d(TAG, "  [$index] $typeStr - ${device.productName}")
+                }
+                
+                // 检查是否有蓝牙麦克风
+                val hasBluetoothMic = devices.any { 
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                }
+                Log.d(TAG, "蓝牙音频设备: ${if (hasBluetoothMic) "已连接 ✓" else "未连接 ✗"}")
+            } else {
+                Log.d(TAG, "Android版本 < M，无法检测音频设备")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "logAudioInputDevices: 检测失败", e)
+        }
+        
+        Log.d(TAG, "======================================")
     }
 
     /**
@@ -1656,17 +1713,41 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             Log.d(TAG, "startRecording: 录音文件路径: ${audioFile.absolutePath}")
 
             // 初始化 AudioRecord
+            // 对于蓝牙语音遥控器，尝试使用 VOICE_RECOGNITION 音频源
+            // 这个音频源针对语音识别优化，会自动路由到蓝牙麦克风
             val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-            audioRecord = AudioRecord(
-                MediaRecorder.AudioSource.MIC,
-                SAMPLE_RATE,
-                CHANNEL_CONFIG,
-                AUDIO_FORMAT,
-                bufferSize * 2
+            
+            // 尝试多种音频源，优先使用蓝牙麦克风
+            val audioSources = listOf(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION",
+                MediaRecorder.AudioSource.MIC to "MIC",
+                MediaRecorder.AudioSource.DEFAULT to "DEFAULT"
             )
-
-            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                Log.e(TAG, "startRecording: AudioRecord 初始化失败")
+            
+            var initialized = false
+            for ((source, sourceName) in audioSources) {
+                Log.d(TAG, "startRecording: 尝试音频源: $sourceName")
+                audioRecord = AudioRecord(
+                    source,
+                    SAMPLE_RATE,
+                    CHANNEL_CONFIG,
+                    AUDIO_FORMAT,
+                    bufferSize * 2
+                )
+                
+                if (audioRecord?.state == AudioRecord.STATE_INITIALIZED) {
+                    Log.d(TAG, "startRecording: 成功使用音频源: $sourceName")
+                    initialized = true
+                    break
+                } else {
+                    Log.w(TAG, "startRecording: 音频源 $sourceName 初始化失败，尝试下一个")
+                    audioRecord?.release()
+                    audioRecord = null
+                }
+            }
+            
+            if (!initialized) {
+                Log.e(TAG, "startRecording: 所有音频源初始化失败")
                 Toast.makeText(this, "录音初始化失败", Toast.LENGTH_SHORT).show()
                 return
             }
