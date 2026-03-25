@@ -2566,6 +2566,9 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                                 Log.d(TAG, "========== 语音识别结果 ==========")
                                 Log.d(TAG, "识别文本: $text")
                                 Log.d(TAG, "================================")
+
+                                // 根据识别文本匹配意图并打开对应APP
+                                handleVoiceIntent(text)
                             } else {
                                 Log.e(TAG, "sendToSpeechAPI: 识别失败 err_no=$errNo, err_msg=$errMsg")
                                 Toast.makeText(this@MainActivity, "识别失败: $errMsg", Toast.LENGTH_SHORT).show()
@@ -2586,6 +2589,98 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     Toast.makeText(this@MainActivity, "API调用异常: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    /**
+     * 根据语音识别文本匹配意图并打开对应APP
+     */
+    private fun handleVoiceIntent(text: String) {
+        Log.d(TAG, "handleVoiceIntent: 开始匹配意图, 文本=$text")
+        
+        // 定义意图规则
+        val intentRules = listOf(
+            VoiceIntent(
+                intent = "账户余额",
+                packageName = "com.bank.app1",
+                keywords = listOf("账户", "余额", "查询", "账户余额", "我的账户", "个人账号", "主账户", "子账户", "账户明细", "账户概览", "账户情况", "余额查询", "可用余额", "实时余额", "剩余金额", "卡里钱", "钱包余额", "存款余额", "查余额", "查账户", "看看余额", "查下账户", "查一下余额", "账户查询", "银行卡")
+            ),
+            VoiceIntent(
+                intent = "转账",
+                packageName = "com.bank.app2",
+                keywords = listOf("转账", "转账汇款", "转钱", "打款", "汇款", "跨行转账", "同行转账", "转账给他人", "转款", "手机转账", "网银转账", "快速转账", "实时转账", "定时转账", "转账到银行卡", "转笔钱", "汇钱", "打钱过去", "转一下", "转个账")
+            ),
+            VoiceIntent(
+                intent = "缴费",
+                packageName = "com.bank.app3",
+                keywords = listOf("缴费", "水费", "话费", "电费", "燃气费", "有线电视", "生活缴费", "缴费用", "交费", "缴费充值", "在线缴费", "自助缴费", "交水费", "水费缴纳", "自来水费", "水费查询", "交电费", "电费缴纳", "电费查询", "电表缴费", "交燃气费", "燃气费缴纳", "煤气费", "燃气缴费", "充话费", "交话费", "话费充值", "手机缴费", "流量充值", "有线电视费", "广电缴费", "数字电视费", "电视缴费", "物业费", "宽带费", "取暖费", "停车费", "社保缴费", "医保缴费")
+            ),
+            VoiceIntent(
+                intent = "交易明细",
+                packageName = "com.bank.app4",
+                keywords = listOf("账单", "明细", "账单查询", "我的账单", "月度账单", "年度账单", "电子账单", "对账单", "账单明细", "交易明细", "收支明细", "消费明细", "账户明细", "流水明细", "交易记录", "收支记录", "消费记录", "查流水", "看账单", "看明细", "查消费记录", "看交易记录")
+            ),
+            VoiceIntent(
+                intent = "理财",
+                packageName = "com.bank.app5",
+                keywords = listOf("理财", "基金", "股票", "养老金", "投资理财", "个人理财", "财富管理", "理财规划", "稳健理财", "活期理财", "定期理财", "基金理财", "买基金", "基金定投", "指数基金", "货币基金", "债券基金", "基金赎回", "股票交易", "炒股", "买股票", "股票持仓", "A股", "港股", "美股", "股票行情", "养老金理财", "养老投资", "个人养老金", "养老基金", "养老理财", "债券", "保险理财", "贵金属", "外汇", "信托", "私募", "定投", "理财收益", "资产配置")
+            )
+        )
+        
+        // 匹配意图
+        var matchedIntent: VoiceIntent? = null
+        var matchedKeyword: String? = null
+        
+        for (rule in intentRules) {
+            for (keyword in rule.keywords) {
+                if (text.contains(keyword)) {
+                    matchedIntent = rule
+                    matchedKeyword = keyword
+                    break
+                }
+            }
+            if (matchedIntent != null) break
+        }
+        
+        if (matchedIntent != null) {
+            Log.d(TAG, "handleVoiceIntent: 匹配成功! 意图=${matchedIntent.intent}, 关键词=$matchedKeyword, 包名=${matchedIntent.packageName}")
+            Toast.makeText(this, "正在打开${matchedIntent.intent}...", Toast.LENGTH_SHORT).show()
+            openAppByPackage(matchedIntent.packageName, matchedIntent.intent)
+        } else {
+            Log.d(TAG, "handleVoiceIntent: 未匹配到意图")
+            Toast.makeText(this, "未识别的指令: $text", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    /**
+     * 意图规则数据类
+     */
+    private data class VoiceIntent(
+        val intent: String,
+        val packageName: String,
+        val keywords: List<String>
+    )
+    
+    /**
+     * 根据包名打开APP
+     */
+    private fun openAppByPackage(packageName: String, intentName: String) {
+        try {
+            val pm = packageManager
+            val intent = pm.getLaunchIntentForPackage(packageName)
+            
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                startActivity(intent)
+                Log.d(TAG, "openAppByPackage: 成功打开 $intentName ($packageName)")
+            } else {
+                Log.e(TAG, "openAppByPackage: 未找到应用 $packageName")
+                Toast.makeText(this, "未安装${intentName}应用", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "openAppByPackage: 打开应用失败", e)
+            Toast.makeText(this, "打开应用失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
