@@ -2020,14 +2020,14 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             Log.d(TAG, "startRecording: 录音文件路径: ${audioFile.absolutePath}")
 
             // 初始化 AudioRecord
-            // 对于蓝牙语音遥控器，尝试使用 VOICE_RECOGNITION 音频源
-            // 这个音频源针对语音识别优化，会自动路由到蓝牙麦克风
+            // 尝试多种音频源，优先使用最稳定的 MIC
             val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
             
-            // 尝试多种音频源，优先使用蓝牙麦克风
+            // 音频源优先级：MIC 最稳定，VOICE_RECOGNITION 某些设备不稳定
             val audioSources = listOf(
+                MediaRecorder.AudioSource.MIC to "MIC",                    // 最稳定
                 MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION",
-                MediaRecorder.AudioSource.MIC to "MIC",
+                MediaRecorder.AudioSource.CAMCORDER to "CAMCORDER",        // 摄像头麦克风
                 MediaRecorder.AudioSource.DEFAULT to "DEFAULT"
             )
             
@@ -2062,7 +2062,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             isRecording = true
             audioRecord?.startRecording()
 
-            Toast.makeText(this, "正在录音...", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "正在录音，请说话...", Toast.LENGTH_SHORT).show()
 
             // 使用协程进行录音
             recordingJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -2073,7 +2073,11 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 writeWavHeader(outputStream, SAMPLE_RATE, 1, 16, 0)
 
                 var totalBytes = 0L
+                var maxAmplitude = 0
+                var silentFrameCount = 0
+                var totalFrameCount = 0
                 val startTime = System.currentTimeMillis()
+                var lastVolumeLogTime = startTime
 
                 try {
                     while (isRecording && (System.currentTimeMillis() - startTime) < MAX_RECORD_DURATION) {
@@ -2081,6 +2085,41 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                         if (bytesRead > 0) {
                             outputStream.write(buffer, 0, bytesRead)
                             totalBytes += bytesRead
+                            totalFrameCount++
+                            
+                            // ========== 实时音量检测 ==========
+                            // 计算当前帧的最大振幅
+                            var frameMaxAmp = 0
+                            for (i in 0 until bytesRead step 2) {
+                                // 16bit PCM，小端序
+                                val sample = (buffer[i].toInt() and 0xFF) or (buffer[i + 1].toInt() shl 8)
+                                val amplitude = kotlin.math.abs(sample)
+                                if (amplitude > frameMaxAmp) {
+                                    frameMaxAmp = amplitude
+                                }
+                            }
+                            
+                            if (frameMaxAmp > maxAmplitude) {
+                                maxAmplitude = frameMaxAmp
+                            }
+                            
+                            // 静音检测（振幅 < 100 认为是静音）
+                            if (frameMaxAmp < 100) {
+                                silentFrameCount++
+                            }
+                            
+                            // 每500ms输出一次音量信息
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastVolumeLogTime >= 500) {
+                                val volumePercent = (frameMaxAmp * 100 / 32767).coerceAtMost(100)
+                                val volumeBar = buildString {
+                                    repeat(20) { i ->
+                                        append(if (i < volumePercent / 5) "█" else "░")
+                                    }
+                                }
+                                Log.d(TAG, "音量: $volumeBar $volumePercent% (振幅=$frameMaxAmp)")
+                                lastVolumeLogTime = currentTime
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -2092,8 +2131,36 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 // 更新 WAV 文件头
                 updateWavHeader(audioFile, totalBytes)
 
+                // 计算静音比例
+                val silentRatio = if (totalFrameCount > 0) {
+                    silentFrameCount * 100.0 / totalFrameCount
+                } else {
+                    100.0
+                }
+
                 withContext(Dispatchers.Main) {
                     stopRecording()
+                    
+                    // 输出录音质量报告
+                    Log.d(TAG, "========== 录音质量报告 ==========")
+                    Log.d(TAG, "录音时长: ${(System.currentTimeMillis() - startTime) / 1000} 秒")
+                    Log.d(TAG, "最大振幅: $maxAmplitude / 32767")
+                    Log.d(TAG, "静音帧比例: ${String.format("%.1f", silentRatio)}%")
+                    Log.d(TAG, "文件大小: ${audioFile.length()} bytes")
+                    Log.d(TAG, "==================================")
+                    
+                    // 判断是否有有效音频
+                    val hasValidAudio = maxAmplitude > 500 && silentRatio < 90
+                    
+                    if (!hasValidAudio) {
+                        Log.w(TAG, "startRecording: 录音可能是静音！")
+                        Toast.makeText(
+                            this@MainActivity, 
+                            "录音可能没有声音，请检查麦克风或说话音量", 
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+
                     Log.d(TAG, "startRecording: 录音完成，文件大小=${audioFile.length()} bytes")
 
                     // 验证WAV文件格式
