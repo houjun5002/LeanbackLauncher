@@ -1660,7 +1660,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             
             // 启动SCO音频连接
             audioManager?.startBluetoothSco()
-            audioManager?.isBluetoothScoAvailableOnCall = true
+            audioManager?.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
             
             Log.d(TAG, "startBluetoothScoAudio: 已请求启动SCO，等待连接...")
             
