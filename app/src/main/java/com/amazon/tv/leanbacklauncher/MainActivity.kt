@@ -1558,11 +1558,12 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // 拦截搜索键和语音助手键
+        // 语音按键：不拦截，让系统处理建立蓝牙音频通道
+        // 然后在 onKeyUp 中启动我们的录音
         if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
-            Log.d(TAG, "onKeyDown: 拦截到语音助手按键 keyCode=$keyCode")
-            startMyVoiceAssistant()
-            return true
+            Log.d(TAG, "onKeyDown: 检测到语音按键 keyCode=$keyCode，让系统先处理")
+            // 不返回 true，让系统继续处理
+            // 系统会启动语音服务并建立蓝牙音频通道
         }
 
         return if (mLaunchAnimation.isPrimed || mLaunchAnimation.isRunning || mEditModeAnimation.isPrimed || mEditModeAnimation.isRunning) {
@@ -1578,6 +1579,16 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        // 语音按键释放时启动录音
+        if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
+            Log.d(TAG, "onKeyUp: 语音按键释放，启动录音")
+            // 延迟一下，让系统有时间建立蓝牙音频通道
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                startMyVoiceAssistant()
+            }, 500)
+            return true
+        }
+        
         if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_INFO) {
             val selectItem = mListView!!.focusedChild
             if (selectItem is ActiveFrame) {
@@ -1711,7 +1722,8 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             
             // 检查蓝牙音频状态
             Log.d(TAG, "--- 蓝牙音频状态 ---")
-            Log.d(TAG, "SCO是否可用: ${audioManager?.isBluetoothScoAvailableOffCall}")
+            val am = getSystemService(android.media.AudioManager::class.java)
+            Log.d(TAG, "SCO是否可用: ${am?.isBluetoothScoAvailableOffCall}")
             
         } catch (e: Exception) {
             Log.e(TAG, "logBluetoothDevices: 检测失败", e)
