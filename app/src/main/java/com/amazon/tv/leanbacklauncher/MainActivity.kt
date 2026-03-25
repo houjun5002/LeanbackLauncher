@@ -146,12 +146,13 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         const val PERMISSIONS_REQUEST_RECORD_AUDIO = 100
         val JSONFILE = LauncherApp.context.cacheDir?.absolutePath + "/weather.json"
 
-        // 语音识别API配置 (使用Hugging Face免费API)
-        // 注册地址: https://huggingface.co (免费，无需信用卡)
-        // 获取Token: Settings -> Access Tokens -> New token
-        // 注意：请将 YOUR_TOKEN 替换为你的实际Token后编译运行
-        private const val SPEECH_API_KEY = "YOUR_TOKEN" // TODO: 替换为你的Hugging Face Token (hf_xxx)
-        private const val SPEECH_API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
+        // 语音识别API配置 (使用百度语音识别API - 国内免费)
+        // 注册地址: https://console.bce.baidu.com/ai/#/ai/speech/overview/index
+        // 创建应用后获取 API Key 和 Secret Key
+        private const val BAIDU_API_KEY = "YOUR_BAIDU_API_KEY" // TODO: 替换为你的百度API Key
+        private const val BAIDU_SECRET_KEY = "YOUR_BAIDU_SECRET_KEY" // TODO: 替换为你的百度Secret Key
+        private const val BAIDU_TOKEN_URL = "https://aip.baidubce.com/oauth/2.0/token"
+        private const val BAIDU_ASR_URL = "https://vop.baidu.com/server_api"
 
         // 录音配置
         private const val SAMPLE_RATE = 16000
@@ -1699,8 +1700,14 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     stopRecording()
                     Log.d(TAG, "startRecording: 录音完成，文件大小=${audioFile.length()} bytes")
 
-                    // 调用智谱API
-                    sendToSpeechAPI(audioFile)
+                    // 验证WAV文件格式
+                    if (verifyWavFile(audioFile)) {
+                        Log.d(TAG, "startRecording: WAV文件格式正确")
+                        sendToSpeechAPI(audioFile)
+                    } else {
+                        Log.e(TAG, "startRecording: WAV文件格式错误!")
+                        Toast.makeText(this@MainActivity, "WAV文件格式错误", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
 
@@ -1787,60 +1794,201 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     /**
-     * 调用智谱API进行语音识别
+     * 验证 WAV 文件格式是否正确
+     */
+    private fun verifyWavFile(file: File): Boolean {
+        try {
+            val inputStream = java.io.DataInputStream(java.io.FileInputStream(file))
+            val header = ByteArray(44)
+            inputStream.read(header)
+            inputStream.close()
+
+            // 检查 RIFF 标识
+            val riff = String(header, 0, 4, Charsets.US_ASCII)
+            if (riff != "RIFF") {
+                Log.e(TAG, "verifyWavFile: 无效的RIFF标识: $riff")
+                return false
+            }
+
+            // 检查 WAVE 标识
+            val wave = String(header, 8, 4, Charsets.US_ASCII)
+            if (wave != "WAVE") {
+                Log.e(TAG, "verifyWavFile: 无效的WAVE标识: $wave")
+                return false
+            }
+
+            // 检查 fmt 标识
+            val fmt = String(header, 12, 4, Charsets.US_ASCII)
+            if (fmt != "fmt ") {
+                Log.e(TAG, "verifyWavFile: 无效的fmt标识: $fmt")
+                return false
+            }
+
+            // 读取音频格式参数
+            val audioFormat = (header[20].toInt() and 0xFF) or ((header[21].toInt() and 0xFF) shl 8)
+            val numChannels = (header[22].toInt() and 0xFF) or ((header[23].toInt() and 0xFF) shl 8)
+            val sampleRate = byteArrayToInt(header, 24, 4)
+            val bitsPerSample = (header[34].toInt() and 0xFF) or ((header[35].toInt() and 0xFF) shl 8)
+
+            Log.d(TAG, "verifyWavFile: WAV文件信息:")
+            Log.d(TAG, "  - 格式: $audioFormat (1=PCM)")
+            Log.d(TAG, "  - 声道数: $numChannels")
+            Log.d(TAG, "  - 采样率: $sampleRate Hz")
+            Log.d(TAG, "  - 位深: $bitsPerSample bits")
+            Log.d(TAG, "  - 文件大小: ${file.length()} bytes")
+
+            // 验证参数是否符合语音识别要求
+            if (audioFormat != 1) {
+                Log.e(TAG, "verifyWavFile: 音频格式错误，应为PCM(1)，实际为 $audioFormat")
+                return false
+            }
+            if (numChannels != 1) {
+                Log.e(TAG, "verifyWavFile: 声道数错误，应为单声道(1)，实际为 $numChannels")
+                return false
+            }
+            if (sampleRate != SAMPLE_RATE) {
+                Log.e(TAG, "verifyWavFile: 采样率错误，应为 $SAMPLE_RATE，实际为 $sampleRate")
+                return false
+            }
+            if (bitsPerSample != 16) {
+                Log.e(TAG, "verifyWavFile: 位深错误，应为16，实际为 $bitsPerSample")
+                return false
+            }
+
+            Log.d(TAG, "verifyWavFile: WAV格式验证通过 ✓")
+            return true
+
+        } catch (e: Exception) {
+            Log.e(TAG, "verifyWavFile: 验证失败", e)
+            return false
+        }
+    }
+
+    /**
+     * ByteArray 转 Int (小端序)
+     */
+    private fun byteArrayToInt(bytes: ByteArray, offset: Int, length: Int): Int {
+        var result = 0
+        for (i in 0 until length) {
+            result = result or ((bytes[offset + i].toInt() and 0xFF) shl (8 * i))
+        }
+        return result
+    }
+
+    /**
+     * 调用百度语音识别API
+     * 流程：1. 获取access_token  2. 调用语音识别接口
      */
     private fun sendToSpeechAPI(audioFile: File) {
-        Log.d(TAG, "sendToSpeechAPI: 开始调用语音识别API")
+        Log.d(TAG, "sendToSpeechAPI: 开始调用百度语音识别API")
         Toast.makeText(this, "正在识别语音...", Toast.LENGTH_SHORT).show()
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // Hugging Face API: 直接发送二进制音频数据
-                val audioBytes = audioFile.readBytes()
-                val requestBody = audioBytes.toRequestBody("audio/wav".toMediaType())
+                // 打印音频文件信息
+                Log.d(TAG, "========== 音频文件信息 ==========")
+                Log.d(TAG, "文件名: ${audioFile.name}")
+                Log.d(TAG, "文件大小: ${audioFile.length()} bytes")
+                Log.d(TAG, "采样率: $SAMPLE_RATE Hz")
+                Log.d(TAG, "声道: 单声道")
+                Log.d(TAG, "位深: 16bit")
+                Log.d(TAG, "================================")
 
-                // 打印请求参数
-                Log.d(TAG, "========== 语音识别请求 ==========")
-                Log.d(TAG, "API: Hugging Face Whisper (免费)")
-                Log.d(TAG, "URL: $SPEECH_API_URL")
-                Log.d(TAG, "File: ${audioFile.name} (${audioFile.length()} bytes)")
-                Log.d(TAG, "========== 请求发送 ==========")
+                // Step 1: 获取百度 access_token
+                val tokenUrl = "$BAIDU_TOKEN_URL?grant_type=client_credentials&client_id=$BAIDU_API_KEY&client_secret=$BAIDU_SECRET_KEY"
+                Log.d(TAG, "sendToSpeechAPI: 正在获取access_token...")
 
-                val request = Request.Builder()
-                    .url(SPEECH_API_URL)
-                    .addHeader("Authorization", "Bearer $SPEECH_API_KEY")
-                    .addHeader("Content-Type", "audio/wav")
-                    .post(requestBody)
+                val tokenRequest = Request.Builder()
+                    .url(tokenUrl)
+                    .post("".toRequestBody("application/json".toMediaType()))
                     .build()
 
-                val response = okHttpClient.newCall(request).execute()
+                val tokenResponse = okHttpClient.newCall(tokenRequest).execute()
+                val tokenBody = tokenResponse.body?.string()
+                Log.d(TAG, "sendToSpeechAPI: Token响应=$tokenBody")
 
-                val responseBody = response.body?.string()
-                Log.d(TAG, "sendToSpeechAPI: HTTP状态码=${response.code}")
-                Log.d(TAG, "sendToSpeechAPI: 响应体=$responseBody")
+                if (!tokenResponse.isSuccessful || tokenBody == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "获取Token失败: ${tokenResponse.code}", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
+                // 解析 access_token
+                val tokenJson = JsonParser.parseString(tokenBody).asJsonObject
+                val accessToken = tokenJson.get("access_token")?.asString
+
+                if (accessToken == null) {
+                    val errorMsg = tokenJson.get("error_description")?.asString ?: "未知错误"
+                    Log.e(TAG, "sendToSpeechAPI: 获取Token失败 - $errorMsg")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Token错误: $errorMsg", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+
+                Log.d(TAG, "sendToSpeechAPI: 获取Token成功")
+
+                // Step 2: 调用语音识别接口
+                // 百度要求：音频数据需要base64编码，或直接发送二进制
+                val audioBytes = audioFile.readBytes()
+                val audioBase64 = java.util.Base64.getEncoder().encodeToString(audioBytes)
+
+                val jsonBody = """
+                    {
+                        "format": "wav",
+                        "rate": $SAMPLE_RATE,
+                        "channel": 1,
+                        "cuid": "android_tv",
+                        "token": "$accessToken",
+                        "speech": "$audioBase64",
+                        "len": ${audioBytes.size}
+                    }
+                """.trimIndent()
+
+                Log.d(TAG, "sendToSpeechAPI: 正在识别语音...")
+                Log.d(TAG, "sendToSpeechAPI: 音频数据大小=${audioBytes.size} bytes")
+
+                val asrRequest = Request.Builder()
+                    .url(BAIDU_ASR_URL)
+                    .addHeader("Content-Type", "application/json")
+                    .post(jsonBody.toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                val asrResponse = okHttpClient.newCall(asrRequest).execute()
+                val asrBody = asrResponse.body?.string()
+                Log.d(TAG, "sendToSpeechAPI: HTTP状态码=${asrResponse.code}")
+                Log.d(TAG, "sendToSpeechAPI: 响应体=$asrBody")
 
                 withContext(Dispatchers.Main) {
-                    if (response.isSuccessful && responseBody != null) {
-                        // 解析 JSON 响应
+                    if (asrResponse.isSuccessful && asrBody != null) {
                         try {
-                            val jsonObject = JsonParser.parseString(responseBody).asJsonObject
-                            val text = jsonObject.get("text")?.asString ?: "未识别到文本"
+                            val jsonObject = JsonParser.parseString(asrBody).asJsonObject
+                            val errNo = jsonObject.get("err_no")?.asInt ?: -1
+                            val errMsg = jsonObject.get("err_msg")?.asString ?: ""
 
-                            Log.d(TAG, "sendToSpeechAPI: 识别结果=$text")
-                            Toast.makeText(this@MainActivity, "识别结果: $text", Toast.LENGTH_LONG).show()
+                            if (errNo == 0) {
+                                // 成功
+                                val resultArray = jsonObject.get("result")?.asJsonArray
+                                val text = resultArray?.get(0)?.asString ?: "未识别到文本"
 
-                            // 打印完整的 API 返回
-                            Log.d(TAG, "========== 语音识别结果 ==========")
-                            Log.d(TAG, "识别文本: $text")
-                            Log.d(TAG, "================================")
+                                Log.d(TAG, "sendToSpeechAPI: 识别成功!")
+                                Toast.makeText(this@MainActivity, "识别结果: $text", Toast.LENGTH_LONG).show()
 
+                                Log.d(TAG, "========== 语音识别结果 ==========")
+                                Log.d(TAG, "识别文本: $text")
+                                Log.d(TAG, "================================")
+                            } else {
+                                Log.e(TAG, "sendToSpeechAPI: 识别失败 err_no=$errNo, err_msg=$errMsg")
+                                Toast.makeText(this@MainActivity, "识别失败: $errMsg", Toast.LENGTH_SHORT).show()
+                            }
                         } catch (e: Exception) {
                             Log.e(TAG, "sendToSpeechAPI: JSON解析错误", e)
                             Toast.makeText(this@MainActivity, "解析响应失败", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        Log.e(TAG, "sendToSpeechAPI: API调用失败 code=${response.code}")
-                        Toast.makeText(this@MainActivity, "API调用失败: ${response.code}", Toast.LENGTH_SHORT).show()
+                        Log.e(TAG, "sendToSpeechAPI: API调用失败 code=${asrResponse.code}")
+                        Toast.makeText(this@MainActivity, "API调用失败: ${asrResponse.code}", Toast.LENGTH_SHORT).show()
                     }
                 }
 
