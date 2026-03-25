@@ -1651,6 +1651,9 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         // 检测已配对的蓝牙设备（诊断用）
         logBluetoothDevices()
         
+        // 提示用户
+        Toast.makeText(this, "请对着电视内置麦克风说话...", Toast.LENGTH_SHORT).show()
+        
         // 直接开始录音（使用内置麦克风）
         // 注意：BLE HID 语音遥控器需要系统级支持才能路由音频到 AudioRecord
         // 当前设备 Remote X5 是 BLE HID 设备，不支持标准蓝牙音频(SCO)
