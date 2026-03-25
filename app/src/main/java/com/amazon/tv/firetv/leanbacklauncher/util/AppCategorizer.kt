@@ -280,6 +280,7 @@ object AppCategorizer {
         "com.bank.app2",      // APP2
         "com.bank.app3",      // APP3
         "com.bank.app4",      // APP3
+        "com.bank.app5",      // APP3
     )
 
     @Suppress("DEPRECATION")
