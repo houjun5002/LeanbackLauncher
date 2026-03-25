@@ -1602,9 +1602,19 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // 语音按键：直接拦截并启动录音
+        // ========== 语音按键处理（Remote X5 BLE 语音遥控器）==========
+        // Remote X5 使用 Google GATT Voice Service 标准协议
+        // Service UUID: 0000ffe0-0000-1000-8000-00805f9b34fb
+        // Characteristic UUID: 0000ffe1-0000-1000-8000-00805f9b34fb
+        // 音频编码: IMA-ADPCM (16kHz 单声道)
+        // 
+        // 关键：必须让系统处理按键以建立 BLE 音频通道！
+        // 长按语音键时，系统会自动建立 BLE 音频连接
+        // 然后 AudioRecord.MIC 就能读取到遥控器麦克风数据
+        
         if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
-            Log.d(TAG, "onKeyDown: 检测到语音按键 keyCode=$keyCode，直接启动录音")
+            Log.d(TAG, "onKeyDown: 检测到语音按键 keyCode=$keyCode")
+            Log.d(TAG, "onKeyDown: 让系统处理按键，建立BLE音频通道...")
             voiceKeyDownTime = System.currentTimeMillis()
             
             // 如果正在录音，停止录音
@@ -1614,9 +1624,17 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 return true
             }
             
-            // 直接启动录音（电视内置麦克风不需要等待蓝牙通道）
-            startMyVoiceAssistant()
-            return true // 拦截按键，不让系统继续处理
+            // 延迟启动录音，让系统有时间建立BLE音频通道
+            // Remote X5 需要系统先建立 GATT Voice 连接
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (!isRecording) {
+                    Log.d(TAG, "onKeyDown: 延迟后启动录音")
+                    startMyVoiceAssistant()
+                }
+            }, 800) // 延迟800ms让系统建立BLE音频通道
+            
+            // 不拦截！让系统处理按键，建立BLE音频通道
+            return super.onKeyDown(keyCode, event)
         }
 
         return if (mLaunchAnimation.isPrimed || mLaunchAnimation.isRunning || mEditModeAnimation.isPrimed || mEditModeAnimation.isRunning) {
@@ -1632,12 +1650,12 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        // 语音按键释放：检测长按
+        // 语音按键释放
         if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
             val pressDuration = System.currentTimeMillis() - voiceKeyDownTime
             Log.d(TAG, "onKeyUp: 语音按键释放，按下时长=${pressDuration}ms")
             
-            // 长按超过2秒：启动BLE扫描
+            // 长按超过2秒：启动BLE扫描（诊断功能）
             if (pressDuration >= LONG_PRESS_DURATION) {
                 Log.d(TAG, "onKeyUp: 长按检测，启动BLE扫描")
                 Toast.makeText(this, "正在扫描BLE设备...", Toast.LENGTH_SHORT).show()
@@ -1647,7 +1665,13 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 return true
             }
             
-            // 短按释放：已在onKeyDown启动录音，这里不做额外处理
+            // 短按释放：停止录音
+            if (isRecording) {
+                Log.d(TAG, "onKeyUp: 停止录音")
+                stopRecording()
+                return true
+            }
+            
             return true
         }
         
