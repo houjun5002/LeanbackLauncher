@@ -1799,18 +1799,17 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 val multipartBody = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .addFormDataPart("file", audioFile.name, requestBody)
-                    .addFormDataPart("model", "FunAudioLLM/whisper")
+                    .addFormDataPart("model", "paraformer")
                     .build()
 
                 // 打印请求body内容
-                val buffer = Buffer()
-                multipartBody.writeTo(buffer)
-                Log.d(TAG, "========== 请求Body开始 ==========")
+                val modelParam = "paraformer"
+                Log.d(TAG, "========== 请求参数 ==========")
                 Log.d(TAG, "URL: $ZHIPU_API_URL")
                 Log.d(TAG, "Authorization: Bearer ${ZHIPU_API_KEY.take(20)}...")
-                Log.d(TAG, "Content-Type: ${multipartBody.contentType()}")
-                Log.d(TAG, "Body预览(前500字符): ${buffer.readUtf8().take(500)}")
-                Log.d(TAG, "========== 请求Body结束 ==========")
+                Log.d(TAG, "file: ${audioFile.name} (size=${audioFile.length()} bytes)")
+                Log.d(TAG, "model: $modelParam")
+                Log.d(TAG, "========== 请求参数结束 ==========")
 
                 val request = Request.Builder()
                     .url(ZHIPU_API_URL)
