@@ -148,7 +148,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
 
         // 语音识别API配置 (使用Groq免费API)
         // 注册地址: https://console.groq.com
-        private const val SPEECH_API_KEY = "gsk_YOUR_GROQ_API_KEY" // 请替换为你的Groq API Key
+        private const val SPEECH_API_KEY = "YOUR_API_KEY"
         private const val SPEECH_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
         private const val SPEECH_MODEL = "whisper-large-v3"
 
