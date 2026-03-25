@@ -210,10 +210,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     private val okHttpClient by lazy { OkHttpClient.Builder().build() }
     private var voiceKeyDownTime = 0L // 语音键按下时间（用于长按检测）
     
-    // 蓝牙音频相关
-    private var bluetoothHeadset: android.bluetooth.BluetoothHeadset? = null
-    private var audioManager: android.media.AudioManager? = null
-    private var scoConnected = false
+
     // =======================================
 
     // Core components
@@ -321,31 +318,6 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             if (intent?.getBooleanExtra("RefreshHome", false) == true) {
                 Log.d(TAG, "RESTART HOME")
                 recreate()
-            }
-        }
-    }
-
-    // 蓝牙 SCO 音频状态监听器
-    private val mScoStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val state = intent?.getIntExtra(android.media.AudioManager.EXTRA_SCO_AUDIO_STATE, -1)
-            Log.d(TAG, "SCO 状态变化: $state (${when(state) {
-                android.media.AudioManager.SCO_AUDIO_STATE_CONNECTED -> "已连接"
-                android.media.AudioManager.SCO_AUDIO_STATE_CONNECTING -> "连接中"
-                android.media.AudioManager.SCO_AUDIO_STATE_DISCONNECTED -> "已断开"
-                android.media.AudioManager.SCO_AUDIO_STATE_ERROR -> "错误"
-                else -> "未知"
-            }})")
-            
-            when (state) {
-                android.media.AudioManager.SCO_AUDIO_STATE_CONNECTED -> {
-                    scoConnected = true
-                    Log.d(TAG, "蓝牙 SCO 音频已连接 ✓")
-                }
-                android.media.AudioManager.SCO_AUDIO_STATE_DISCONNECTED -> {
-                    scoConnected = false
-                    Log.d(TAG, "蓝牙 SCO 音频已断开")
-                }
             }
         }
     }
@@ -610,10 +582,6 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         registerReceiver(mPackageReplacedReceiver, filter)
         // regiser RefreshHome broadcast ACTION com.amazon.tv.leanbacklauncher.MainActivity
         registerReceiver(mHomeRefreshReceiver, IntentFilter(this.javaClass.name))
-        
-        // 注册蓝牙 SCO 状态监听器
-        val scoFilter = IntentFilter(android.media.AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED)
-        registerReceiver(mScoStateReceiver, scoFilter)
 
         loaderManager.initLoader(0, null, mSearchIconCallbacks)
         loaderManager.initLoader(1, null, mSearchSuggestionsCallbacks)
@@ -646,14 +614,6 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         getInstance(applicationContext)?.onDestroy()
         unregisterReceiver(mPackageReplacedReceiver)
         unregisterReceiver(mHomeRefreshReceiver)
-        try {
-            unregisterReceiver(mScoStateReceiver)
-        } catch (e: Exception) {
-            Log.e(TAG, "onDestroy: 取消注册 SCO 监听器失败", e)
-        }
-        
-        // 确保断开蓝牙音频
-        disconnectBluetoothAudio()
     }
 
     override fun onUserInteraction() {
@@ -1628,7 +1588,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     Log.d(TAG, "onKeyDown: 启动录音（8秒自动停止）")
                     startMyVoiceAssistant()
                 }
-            }, 30) // 缩短延迟到300ms
+            }, 30) // 延迟30ms让系统建立BLE通道
             
             // 不拦截，让系统处理按键建立BLE音频通道
             return super.onKeyDown(keyCode, event)
@@ -2073,95 +2033,17 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     /**
-     * 尝试连接蓝牙音频（SCO）
-     * 让遥控器的麦克风音频路由到 AudioRecord
-     */
-    private fun connectBluetoothAudio(): Boolean {
-        Log.d(TAG, "========== 尝试连接蓝牙音频 ==========")
-        
-        try {
-            // 获取 AudioManager
-            audioManager = getSystemService(android.media.AudioManager::class.java)
-            
-            if (audioManager == null) {
-                Log.e(TAG, "connectBluetoothAudio: 无法获取 AudioManager")
-                return false
-            }
-            
-            // 检查 SCO 是否可用
-            if (audioManager?.isBluetoothScoAvailableOffCall != true) {
-                Log.w(TAG, "connectBluetoothAudio: 蓝牙 SCO 不可用")
-                return false
-            }
-            
-            // 启动蓝牙 SCO
-            Log.d(TAG, "connectBluetoothAudio: 启动蓝牙 SCO...")
-            audioManager?.startBluetoothSco()
-            audioManager?.mode = android.media.AudioManager.MODE_IN_COMMUNICATION
-            audioManager?.isBluetoothScoOn = true
-            
-            // 等待 SCO 连接建立
-            var retryCount = 0
-            while (!scoConnected && retryCount < 10) {
-                Thread.sleep(200)
-                retryCount++
-                Log.d(TAG, "connectBluetoothAudio: 等待 SCO 连接... ($retryCount/10)")
-            }
-            
-            if (scoConnected) {
-                Log.d(TAG, "connectBluetoothAudio: SCO 连接成功 ✓")
-                return true
-            } else {
-                Log.w(TAG, "connectBluetoothAudio: SCO 连接超时")
-                return false
-            }
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "connectBluetoothAudio: 连接失败", e)
-            return false
-        }
-        
-        Log.d(TAG, "======================================")
-    }
-
-    /**
-     * 断开蓝牙音频（SCO）
-     */
-    private fun disconnectBluetoothAudio() {
-        try {
-            if (audioManager != null && scoConnected) {
-                Log.d(TAG, "disconnectBluetoothAudio: 断开蓝牙 SCO")
-                audioManager?.stopBluetoothSco()
-                audioManager?.isBluetoothScoOn = false
-                audioManager?.mode = android.media.AudioManager.MODE_NORMAL
-                scoConnected = false
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "disconnectBluetoothAudio: 断开失败", e)
-        }
-    }
-
-    /**
      * 开始录音
      */
     private fun startRecording() {
         try {
             Log.d(TAG, "startRecording: 开始录音")
 
-            // ========== 0. 尝试连接蓝牙音频（让遥控器麦克风路由到系统） ==========
-            val bluetoothConnected = true
-//            if (bluetoothConnected) {
-//                Log.d(TAG, "startRecording: 蓝牙音频连接成功，等待音频通道建立...")
-//                Thread.sleep(500)  // 等待音频通道建立
-//            }
-
-
-            // ========== 功能1: 检测录音设备 ==========
+            // ========== 检测录音设备 ==========
             val hasMic = checkAudioInputDevice()
             if (!hasMic) {
                 Log.e(TAG, "startRecording: 未检测到录音设备!")
                 Toast.makeText(this, "未检测到录音设备，请检查麦克风连接", Toast.LENGTH_LONG).show()
-                disconnectBluetoothAudio()
                 return
             }
 
@@ -2182,22 +2064,13 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             // 尝试多种音频源，优先使用蓝牙麦克风
             val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
             
-            // 音频源优先级：如果蓝牙已连接，优先使用 VOICE_COMMUNICATION
-            val audioSources = if (bluetoothConnected || scoConnected) {
-                listOf(
-                    MediaRecorder.AudioSource.VOICE_COMMUNICATION to "VOICE_COMMUNICATION",  // 蓝牙通话
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION",
-                    MediaRecorder.AudioSource.MIC to "MIC",
-                    MediaRecorder.AudioSource.DEFAULT to "DEFAULT"
-                )
-            } else {
-                listOf(
-                    MediaRecorder.AudioSource.MIC to "MIC",
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION",
-                    MediaRecorder.AudioSource.CAMCORDER to "CAMCORDER",
-                    MediaRecorder.AudioSource.DEFAULT to "DEFAULT"
-                )
-            }
+            // 音频源优先级：Remote X5 使用 GATT Voice Service，系统自动路由
+            val audioSources = listOf(
+                MediaRecorder.AudioSource.VOICE_COMMUNICATION to "VOICE_COMMUNICATION",  // 蓝牙通话
+                MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION",
+                MediaRecorder.AudioSource.MIC to "MIC",
+                MediaRecorder.AudioSource.DEFAULT to "DEFAULT"
+            )
             
             var initialized = false
             for ((source, sourceName) in audioSources) {
@@ -2403,9 +2276,6 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         } catch (e: Exception) {
             Log.e(TAG, "stopRecording: 停止录音错误", e)
         }
-
-        // 断开蓝牙音频
-        disconnectBluetoothAudio()
 
         recordingJob?.cancel()
         recordingJob = null
