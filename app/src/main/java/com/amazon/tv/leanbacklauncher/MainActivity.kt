@@ -1798,7 +1798,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 val multipartBody = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .addFormDataPart("file", audioFile.name, requestBody)
-                    .addFormDataPart("model", "whisper-1")
+                    .addFormDataPart("model", "paraformer-v1")
                     .build()
 
                 val request = Request.Builder()
