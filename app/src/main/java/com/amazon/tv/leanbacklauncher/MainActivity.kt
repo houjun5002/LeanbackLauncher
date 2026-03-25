@@ -1560,11 +1560,21 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // 语音按键：记录按下时间（用于长按检测）
+        // 语音按键：直接拦截并启动录音
         if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
-            Log.d(TAG, "onKeyDown: 检测到语音按键 keyCode=$keyCode")
+            Log.d(TAG, "onKeyDown: 检测到语音按键 keyCode=$keyCode，直接启动录音")
             voiceKeyDownTime = System.currentTimeMillis()
-            // 不返回 true，让系统继续处理
+            
+            // 如果正在录音，停止录音
+            if (isRecording) {
+                Log.d(TAG, "onKeyDown: 已在录音中，停止录音")
+                stopRecording()
+                return true
+            }
+            
+            // 直接启动录音（电视内置麦克风不需要等待蓝牙通道）
+            startMyVoiceAssistant()
+            return true // 拦截按键，不让系统继续处理
         }
 
         return if (mLaunchAnimation.isPrimed || mLaunchAnimation.isRunning || mEditModeAnimation.isPrimed || mEditModeAnimation.isRunning) {
@@ -1580,7 +1590,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        // 语音按键释放
+        // 语音按键释放：检测长按
         if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
             val pressDuration = System.currentTimeMillis() - voiceKeyDownTime
             Log.d(TAG, "onKeyUp: 语音按键释放，按下时长=${pressDuration}ms")
@@ -1595,12 +1605,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 return true
             }
             
-            // 短按：启动录音
-            Log.d(TAG, "onKeyUp: 短按，启动录音")
-            // 延迟一下，让系统有时间建立蓝牙音频通道
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                startMyVoiceAssistant()
-            }, 500)
+            // 短按释放：已在onKeyDown启动录音，这里不做额外处理
             return true
         }
         
