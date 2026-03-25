@@ -1766,17 +1766,28 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     /**
-     * 更新 WAV 文件头中的数据长度
+     * 更新 WAV 文件头中的数据长度（小端序）
      */
     private fun updateWavHeader(file: File, dataLength: Long) {
         try {
-            val outputStream = FileOutputStream(file, true)
-            outputStream.channel.use { channel ->
-                channel.position(4)
-                channel.write(java.nio.ByteBuffer.allocate(4).putInt((36 + dataLength).toInt()))
-                channel.position(40)
-                channel.write(java.nio.ByteBuffer.allocate(4).putInt(dataLength.toInt()))
+            java.io.RandomAccessFile(file, "rw").use { raf ->
+                // 更新文件总长度 (位置4，4字节，小端序)
+                raf.seek(4)
+                val totalSize = (36 + dataLength).toInt()
+                raf.write(totalSize and 0xFF)
+                raf.write((totalSize shr 8) and 0xFF)
+                raf.write((totalSize shr 16) and 0xFF)
+                raf.write((totalSize shr 24) and 0xFF)
+                
+                // 更新数据长度 (位置40，4字节，小端序)
+                raf.seek(40)
+                val dataSize = dataLength.toInt()
+                raf.write(dataSize and 0xFF)
+                raf.write((dataSize shr 8) and 0xFF)
+                raf.write((dataSize shr 16) and 0xFF)
+                raf.write((dataSize shr 24) and 0xFF)
             }
+            Log.d(TAG, "updateWavHeader: 更新成功，数据长度=$dataLength bytes")
         } catch (e: Exception) {
             Log.e(TAG, "updateWavHeader: 更新WAV头错误", e)
         }
@@ -1885,14 +1896,48 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // 打印音频文件信息
+                // 验证并打印音频文件详细信息
                 Log.d(TAG, "========== 音频文件信息 ==========")
                 Log.d(TAG, "文件名: ${audioFile.name}")
                 Log.d(TAG, "文件大小: ${audioFile.length()} bytes")
                 Log.d(TAG, "采样率: $SAMPLE_RATE Hz")
                 Log.d(TAG, "声道: 单声道")
                 Log.d(TAG, "位深: 16bit")
+                
+                // 检查音频数据是否有效（非静音）
+                val audioBytes = audioFile.readBytes()
+                val headerSize = 44
+                if (audioBytes.size <= headerSize) {
+                    Log.e(TAG, "sendToSpeechAPI: 音频数据为空!")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "音频数据为空", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+                
+                // 统计非零字节数量
+                val audioData = audioBytes.copyOfRange(headerSize, audioBytes.size)
+                var nonZeroCount = 0
+                var maxAmplitude = 0
+                for (i in audioData.indices) {
+                    if (audioData[i] != 0.toByte()) nonZeroCount++
+                    val amplitude = Math.abs(audioData[i].toInt())
+                    if (amplitude > maxAmplitude) maxAmplitude = amplitude
+                }
+                val nonZeroPercent = (nonZeroCount * 100.0 / audioData.size)
+                Log.d(TAG, "音频数据分析:")
+                Log.d(TAG, "  - 音频数据大小: ${audioData.size} bytes")
+                Log.d(TAG, "  - 非零字节: $nonZeroCount (${String.format("%.1f", nonZeroPercent)}%)")
+                Log.d(TAG, "  - 最大振幅: $maxAmplitude")
                 Log.d(TAG, "================================")
+                
+                if (nonZeroPercent < 5.0) {
+                    Log.w(TAG, "sendToSpeechAPI: 警告 - 音频可能是静音!")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "录音可能是静音，请说话后重试", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
 
                 // Step 1: 获取百度 access_token
                 val tokenUrl = "$BAIDU_TOKEN_URL?grant_type=client_credentials&client_id=$BAIDU_API_KEY&client_secret=$BAIDU_SECRET_KEY"
