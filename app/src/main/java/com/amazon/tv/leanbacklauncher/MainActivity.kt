@@ -1660,29 +1660,25 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                         android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "蓝牙A2DP"
                         android.media.AudioDeviceInfo.TYPE_WIRED_HEADSET -> "有线耳机"
                         android.media.AudioDeviceInfo.TYPE_USB_DEVICE -> "USB设备"
-                        android.media.AudioDeviceInfo.TYPE_USB_ACCESSORY -> "USB配件"
                         android.media.AudioDeviceInfo.TYPE_DOCK -> "底座"
-                        android.media.AudioDeviceInfo.TYPE_FM -> "FM"
-                        android.media.AudioDeviceInfo.TYPE_BUILTIN_MICROPHONE -> "内置麦克风2"
                         android.media.AudioDeviceInfo.TYPE_FM_TUNER -> "FM调谐器"
                         android.media.AudioDeviceInfo.TYPE_TV_TUNER -> "TV调谐器"
                         android.media.AudioDeviceInfo.TYPE_TELEPHONY -> "电话"
                         android.media.AudioDeviceInfo.TYPE_AUX_LINE -> "AUX线路"
-                        android.media.AudioDeviceInfo.TYPE_IP -> "网络"
-                        android.media.AudioDeviceInfo.TYPE_BUS -> "总线"
-                        android.media.AudioDeviceInfo.TYPE_USB_HEADSET -> "USB耳机"
-                        android.media.AudioDeviceInfo.TYPE_HEARING_AID -> "助听器"
                         android.media.AudioDeviceInfo.TYPE_HDMI -> "HDMI"
                         android.media.AudioDeviceInfo.TYPE_HDMI_ARC -> "HDMI_ARC"
-                        else -> "未知类型(${device.type})"
+                        3 -> "蓝牙音频(3)"  // 某些设备的蓝牙类型
+                        7 -> "蓝牙音频(7)"  // 某些设备的蓝牙类型
+                        else -> "类型${device.type}"
                     }
                     Log.d(TAG, "  [$index] $typeStr - ${device.productName}")
                 }
                 
-                // 检查是否有蓝牙麦克风
+                // 检查是否有蓝牙麦克风 (TYPE_BLUETOOTH_SCO=7, TYPE_BLUETOOTH_A2DP=8)
                 val hasBluetoothMic = devices.any { 
                     it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                    it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+                    it.type == android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    it.type == 3 || it.type == 7 || it.type == 8  // 兼容不同设备
                 }
                 Log.d(TAG, "蓝牙音频设备: ${if (hasBluetoothMic) "已连接 ✓" else "未连接 ✗"}")
             } else {
