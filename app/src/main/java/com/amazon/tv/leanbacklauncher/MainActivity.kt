@@ -199,7 +199,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
 
     // Weather Animation constants
     private val showCycleDur: Long = TimeUnit.SECONDS.toMillis(10) // 10 seconds
-    private val fadeInDur: Long = 300L // milliseconds
+    private val fadeInDur: Long = 30L // milliseconds
     private val fadeOutDur: Long = 500L
     private var weatherAnimationJob: Job? = null
 
@@ -1628,7 +1628,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     Log.d(TAG, "onKeyDown: 启动录音（8秒自动停止）")
                     startMyVoiceAssistant()
                 }
-            }, 300) // 缩短延迟到300ms
+            }, 30) // 缩短延迟到300ms
             
             // 不拦截，让系统处理按键建立BLE音频通道
             return super.onKeyDown(keyCode, event)
@@ -2149,11 +2149,12 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             Log.d(TAG, "startRecording: 开始录音")
 
             // ========== 0. 尝试连接蓝牙音频（让遥控器麦克风路由到系统） ==========
-            val bluetoothConnected = connectBluetoothAudio()
-            if (bluetoothConnected) {
-                Log.d(TAG, "startRecording: 蓝牙音频连接成功，等待音频通道建立...")
-                Thread.sleep(500)  // 等待音频通道建立
-            }
+            val bluetoothConnected = true
+//            if (bluetoothConnected) {
+//                Log.d(TAG, "startRecording: 蓝牙音频连接成功，等待音频通道建立...")
+//                Thread.sleep(500)  // 等待音频通道建立
+//            }
+
 
             // ========== 功能1: 检测录音设备 ==========
             val hasMic = checkAudioInputDevice()
