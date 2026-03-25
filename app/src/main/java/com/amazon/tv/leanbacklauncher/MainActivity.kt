@@ -1709,7 +1709,6 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             // 检查蓝牙音频状态
             Log.d(TAG, "--- 蓝牙音频状态 ---")
             Log.d(TAG, "SCO是否可用: ${audioManager?.isBluetoothScoAvailableOffCall}")
-            Log.d(TAG, "蓝牙A2DP: ${bluetoothAdapter.isBluetoothA2dpOn}")
             
         } catch (e: Exception) {
             Log.e(TAG, "logBluetoothDevices: 检测失败", e)
