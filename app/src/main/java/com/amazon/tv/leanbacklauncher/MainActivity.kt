@@ -1,5 +1,6 @@
 package com.amazon.tv.leanbacklauncher
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.ActivityOptions
@@ -22,6 +23,9 @@ import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.location.Location
+import android.media.AudioFormat
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.media.tv.TvContract
 import android.os.Build
 import android.os.Bundle
@@ -42,9 +46,11 @@ import android.view.animation.LinearInterpolator
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.res.ResourcesCompat
+import android.content.pm.PackageManager.PERMISSION_GRANTED
 import androidx.core.net.toUri
 import androidx.core.text.isDigitsOnly
 import androidx.core.view.isNotEmpty
@@ -95,6 +101,8 @@ import com.amazon.tv.leanbacklauncher.wallpaper.WallpaperInstaller
 import com.amazon.tv.leanbacklauncher.widget.EditModeView
 import com.amazon.tv.leanbacklauncher.widget.EditModeView.OnEditModeUninstallPressedListener
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import de.interaapps.localweather.LocalWeather
 import de.interaapps.localweather.Weather
 import de.interaapps.localweather.utils.Lang
@@ -106,9 +114,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import org.json.JSONObject
 import java.io.File
 import java.io.FileDescriptor
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.PrintWriter
 import java.lang.String.format
 import java.lang.ref.WeakReference
@@ -127,7 +142,18 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         private const val FIRST_POSITION = 0
         private const val UNINSTALL_CODE = 321
         const val PERMISSIONS_REQUEST_LOCATION = 99
+        const val PERMISSIONS_REQUEST_RECORD_AUDIO = 100
         val JSONFILE = LauncherApp.context.cacheDir?.absolutePath + "/weather.json"
+
+        // 智谱AI API配置
+        private const val ZHIPU_API_KEY = "YOUR_ZHIPU_API_KEY" // 请替换为你的智谱API Key
+        private const val ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/audio/transcriptions"
+
+        // 录音配置
+        private const val SAMPLE_RATE = 16000
+        private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
+        private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
+        private const val MAX_RECORD_DURATION = 30000L // 最大录音时长30秒
 
         fun isMediaKey(keyCode: Int): Boolean {
             return when (keyCode) {
@@ -169,6 +195,13 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     private val fadeInDur: Long = 300L // milliseconds
     private val fadeOutDur: Long = 500L
     private var weatherAnimationJob: Job? = null
+
+    // ========== 语音助手相关变量 ==========
+    private var audioRecord: AudioRecord? = null
+    private var isRecording = false
+    private var recordingJob: Job? = null
+    private val okHttpClient by lazy { OkHttpClient.Builder().build() }
+    // =======================================
 
     // Core components
     private val mHandler: Handler = MainActivityMessageHandler(this)
@@ -672,6 +705,15 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 } else {
                     Log.i(TAG, "Not agree location permission")
                     LauncherApp.toast(R.string.location_note, true)
+                }
+            }
+            PERMISSIONS_REQUEST_RECORD_AUDIO -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    Log.i(TAG, "Agree record audio permission")
+                    startRecording()
+                } else {
+                    Log.i(TAG, "Not agree record audio permission")
+                    Toast.makeText(this, "需要录音权限才能使用语音助手", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -1510,6 +1552,13 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // 拦截搜索键和语音助手键
+        if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
+            Log.d(TAG, "onKeyDown: 拦截到语音助手按键 keyCode=$keyCode")
+            startMyVoiceAssistant()
+            return true
+        }
+
         return if (mLaunchAnimation.isPrimed || mLaunchAnimation.isRunning || mEditModeAnimation.isPrimed || mEditModeAnimation.isRunning) {
             when (keyCode) {
                 KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_BACK -> super.onKeyDown(keyCode, event)
@@ -1553,6 +1602,253 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             else -> true
         }
     }
+
+    // ==================== 语音助手功能 ====================
+
+    /**
+     * 启动语音助手
+     * 1. 检查录音权限
+     * 2. 开始录音
+     * 3. 调用智谱API进行语音识别
+     */
+    private fun startMyVoiceAssistant() {
+        Log.d(TAG, "startMyVoiceAssistant: 启动语音助手")
+
+        // 检查是否正在录音
+        if (isRecording) {
+            Log.d(TAG, "startMyVoiceAssistant: 已在录音中，停止录音")
+            stopRecording()
+            return
+        }
+
+        // 检查录音权限
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PERMISSION_GRANTED) {
+            Log.d(TAG, "startMyVoiceAssistant: 请求录音权限")
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), PERMISSIONS_REQUEST_RECORD_AUDIO)
+            return
+        }
+
+        // 开始录音
+        startRecording()
+    }
+
+    /**
+     * 开始录音
+     */
+    private fun startRecording() {
+        try {
+            Log.d(TAG, "startRecording: 开始录音")
+
+            // 创建录音文件
+            val audioFile = File(cacheDir, "voice_recording_${System.currentTimeMillis()}.wav")
+
+            // 初始化 AudioRecord
+            val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
+            audioRecord = AudioRecord(
+                MediaRecorder.AudioSource.MIC,
+                SAMPLE_RATE,
+                CHANNEL_CONFIG,
+                AUDIO_FORMAT,
+                bufferSize * 2
+            )
+
+            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+                Log.e(TAG, "startRecording: AudioRecord 初始化失败")
+                Toast.makeText(this, "录音初始化失败", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            isRecording = true
+            audioRecord?.startRecording()
+
+            Toast.makeText(this, "正在录音...", Toast.LENGTH_SHORT).show()
+
+            // 使用协程进行录音
+            recordingJob = lifecycleScope.launch(Dispatchers.IO) {
+                val outputStream = FileOutputStream(audioFile)
+                val buffer = ByteArray(bufferSize)
+
+                // 写入 WAV 文件头
+                writeWavHeader(outputStream, SAMPLE_RATE, 1, 16, 0)
+
+                var totalBytes = 0L
+                val startTime = System.currentTimeMillis()
+
+                try {
+                    while (isRecording && (System.currentTimeMillis() - startTime) < MAX_RECORD_DURATION) {
+                        val bytesRead = audioRecord?.read(buffer, 0, bufferSize) ?: 0
+                        if (bytesRead > 0) {
+                            outputStream.write(buffer, 0, bytesRead)
+                            totalBytes += bytesRead
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "startRecording: 录音错误", e)
+                } finally {
+                    outputStream.close()
+                }
+
+                // 更新 WAV 文件头
+                updateWavHeader(audioFile, totalBytes)
+
+                withContext(Dispatchers.Main) {
+                    stopRecording()
+                    Log.d(TAG, "startRecording: 录音完成，文件大小=${audioFile.length()} bytes")
+
+                    // 调用智谱API
+                    sendToZhipuAPI(audioFile)
+                }
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "startRecording: 录音启动失败", e)
+            Toast.makeText(this, "录音启动失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            isRecording = false
+        }
+    }
+
+    /**
+     * 停止录音
+     */
+    private fun stopRecording() {
+        Log.d(TAG, "stopRecording: 停止录音")
+        isRecording = false
+
+        try {
+            audioRecord?.stop()
+            audioRecord?.release()
+            audioRecord = null
+        } catch (e: Exception) {
+            Log.e(TAG, "stopRecording: 停止录音错误", e)
+        }
+
+        recordingJob?.cancel()
+        recordingJob = null
+    }
+
+    /**
+     * 写入 WAV 文件头
+     */
+    private fun writeWavHeader(outputStream: FileOutputStream, sampleRate: Int, channels: Int, bitsPerSample: Int, dataLength: Long) {
+        val byteRate = sampleRate * channels * bitsPerSample / 8
+        val blockAlign = channels * bitsPerSample / 8
+
+        outputStream.use { it ->
+            // RIFF header
+            it.write("RIFF".toByteArray())
+            it.write(intToByteArray(36 + dataLength, 4)) // File length
+            it.write("WAVE".toByteArray())
+
+            // fmt chunk
+            it.write("fmt ".toByteArray())
+            it.write(intToByteArray(16, 4)) // Subchunk1Size
+            it.write(intToByteArray(1, 2))  // AudioFormat (PCM)
+            it.write(intToByteArray(channels, 2)) // NumChannels
+            it.write(intToByteArray(sampleRate, 4)) // SampleRate
+            it.write(intToByteArray(byteRate, 4))   // ByteRate
+            it.write(intToByteArray(blockAlign, 2)) // BlockAlign
+            it.write(intToByteArray(bitsPerSample, 2)) // BitsPerSample
+
+            // data chunk
+            it.write("data".toByteArray())
+            it.write(intToByteArray(dataLength, 4)) // Subchunk2Size
+        }
+    }
+
+    /**
+     * 更新 WAV 文件头中的数据长度
+     */
+    private fun updateWavHeader(file: File, dataLength: Long) {
+        try {
+            val outputStream = FileOutputStream(file, true)
+            outputStream.channel.use { channel ->
+                channel.position(4)
+                channel.write(java.nio.ByteBuffer.allocate(4).putInt((36 + dataLength).toInt()))
+                channel.position(40)
+                channel.write(java.nio.ByteBuffer.allocate(4).putInt(dataLength.toInt()))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "updateWavHeader: 更新WAV头错误", e)
+        }
+    }
+
+    /**
+     * Int 转 ByteArray
+     */
+    private fun intToByteArray(value: Long, size: Int): ByteArray {
+        val result = ByteArray(size)
+        for (i in 0 until size) {
+            result[i] = (value shr (8 * i) and 0xFF).toByte()
+        }
+        return result
+    }
+
+    /**
+     * 调用智谱API进行语音识别
+     */
+    private fun sendToZhipuAPI(audioFile: File) {
+        Log.d(TAG, "sendToZhipuAPI: 开始调用智谱API")
+        Toast.makeText(this, "正在识别语音...", Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // 构建 multipart 请求
+                val mediaType = "audio/wav".toMediaType()
+                val requestBody = audioFile.asRequestBody(mediaType)
+
+                val multipartBody = MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("file", audioFile.name, requestBody)
+                    .addFormDataPart("model", "whisper-1")
+                    .build()
+
+                val request = Request.Builder()
+                    .url(ZHIPU_API_URL)
+                    .addHeader("Authorization", "Bearer $ZHIPU_API_KEY")
+                    .post(multipartBody)
+                    .build()
+
+                val response = okHttpClient.newCall(request).execute()
+
+                val responseBody = response.body?.string()
+                Log.d(TAG, "sendToZhipuAPI: HTTP状态码=${response.code}")
+                Log.d(TAG, "sendToZhipuAPI: 响应体=$responseBody")
+
+                withContext(Dispatchers.Main) {
+                    if (response.isSuccessful && responseBody != null) {
+                        // 解析 JSON 响应
+                        try {
+                            val jsonObject = JsonParser.parseString(responseBody).asJsonObject
+                            val text = jsonObject.get("text")?.asString ?: "未识别到文本"
+
+                            Log.d(TAG, "sendToZhipuAPI: 识别结果=$text")
+                            Toast.makeText(this@MainActivity, "识别结果: $text", Toast.LENGTH_LONG).show()
+
+                            // 打印完整的 API 返回
+                            Log.d(TAG, "========== 智谱API返回 ==========")
+                            Log.d(TAG, responseBody)
+                            Log.d(TAG, "================================")
+
+                        } catch (e: Exception) {
+                            Log.e(TAG, "sendToZhipuAPI: JSON解析错误", e)
+                            Toast.makeText(this@MainActivity, "解析响应失败", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Log.e(TAG, "sendToZhipuAPI: API调用失败 code=${response.code}")
+                        Toast.makeText(this@MainActivity, "API调用失败: ${response.code}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "sendToZhipuAPI: 调用API异常", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "API调用异常: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    // ==================== 语音助手功能结束 ====================
 
     private fun addWidget(refresh: Boolean) {
         val wrapper: ViewGroup? = findViewById<View>(R.id.widget_wrapper) as? LinearLayout?
