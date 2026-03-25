@@ -153,7 +153,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         private const val SAMPLE_RATE = 16000
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
-        private const val MAX_RECORD_DURATION = 30000L // 最大录音时长30秒
+        private const val MAX_RECORD_DURATION = 10000L // 最大录音时长30秒
 
         fun isMediaKey(keyCode: Int): Boolean {
             return when (keyCode) {
@@ -1431,7 +1431,6 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         if (!(homeAdapter == null || homeAdapter!!.isUiVisible || mDelayFirstRecommendationsVisible)) {
             homeAdapter?.onUiVisible()
         }
-        startMyVoiceAssistant()
     }
 
     override fun onEnterAnimationComplete() {
@@ -1744,11 +1743,11 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         outputStream.write("fmt ".toByteArray())
         outputStream.write(intToByteArray(16, 4)) // Subchunk1Size
         outputStream.write(intToByteArray(1, 2))  // AudioFormat (PCM)
-        outputStream.write(intToByteArray(channels, 2)) // NumChannels
-        outputStream.write(intToByteArray(sampleRate, 4)) // SampleRate
-        outputStream.write(intToByteArray(byteRate, 4))   // ByteRate
-        outputStream.write(intToByteArray(blockAlign, 2)) // BlockAlign
-        outputStream.write(intToByteArray(bitsPerSample, 2)) // BitsPerSample
+        outputStream.write(intToByteArray(channels.toLong(), 2)) // NumChannels
+        outputStream.write(intToByteArray(sampleRate.toLong(), 4)) // SampleRate
+        outputStream.write(intToByteArray(byteRate.toLong(), 4))   // ByteRate
+        outputStream.write(intToByteArray(blockAlign.toLong(), 2)) // BlockAlign
+        outputStream.write(intToByteArray(bitsPerSample.toLong(), 2)) // BitsPerSample
 
         // data chunk
         outputStream.write("data".toByteArray())
