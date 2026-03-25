@@ -1983,8 +1983,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 Log.d(TAG, "sendToSpeechAPI: 获取Token成功")
 
                 // Step 2: 调用语音识别接口
-                // 百度要求：音频数据需要base64编码，或直接发送二进制
-                val audioBytes = audioFile.readBytes()
+                // 百度要求：音频数据需要base64编码（复用前面已读取的audioBytes）
                 val audioBase64 = java.util.Base64.getEncoder().encodeToString(audioBytes)
 
                 val jsonBody = """
