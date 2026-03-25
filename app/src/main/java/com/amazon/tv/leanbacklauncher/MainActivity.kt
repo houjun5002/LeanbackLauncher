@@ -149,7 +149,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         // 语音识别API配置 (使用Hugging Face免费API)
         // 注册地址: https://huggingface.co (免费，无需信用卡)
         // 获取Token: Settings -> Access Tokens -> New token
-        private const val SPEECH_API_KEY = "hf_YOUR_HUGGINGFACE_TOKEN" // 请替换为你的Hugging Face Token
+        private const val SPEECH_API_KEY = "YOUR_TOKEN"
         private const val SPEECH_API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
 
         // 录音配置
