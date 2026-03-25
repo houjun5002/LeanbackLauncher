@@ -146,9 +146,11 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         const val PERMISSIONS_REQUEST_RECORD_AUDIO = 100
         val JSONFILE = LauncherApp.context.cacheDir?.absolutePath + "/weather.json"
 
-        // 智谱AI API配置
-        private const val ZHIPU_API_KEY = "a8789687e66c4e15a0071fe775caef5f.KmV5E6KIIzPjBmaE" // 请替换为你的智谱API Key
-        private const val ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/audio/transcriptions"
+        // 语音识别API配置 (使用Groq免费API)
+        // 注册地址: https://console.groq.com
+        private const val SPEECH_API_KEY = "gsk_YOUR_GROQ_API_KEY" // 请替换为你的Groq API Key
+        private const val SPEECH_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+        private const val SPEECH_MODEL = "whisper-large-v3"
 
         // 录音配置
         private const val SAMPLE_RATE = 16000
@@ -1697,7 +1699,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     Log.d(TAG, "startRecording: 录音完成，文件大小=${audioFile.length()} bytes")
 
                     // 调用智谱API
-                    sendToZhipuAPI(audioFile)
+                    sendToSpeechAPI(audioFile)
                 }
             }
 
@@ -1786,42 +1788,42 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     /**
      * 调用智谱API进行语音识别
      */
-    private fun sendToZhipuAPI(audioFile: File) {
-        Log.d(TAG, "sendToZhipuAPI: 开始调用智谱API")
+    private fun sendToSpeechAPI(audioFile: File) {
+        Log.d(TAG, "sendToSpeechAPI: 开始调用语音识别API")
         Toast.makeText(this, "正在识别语音...", Toast.LENGTH_SHORT).show()
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // 构建 multipart 请求
+                // 构建 multipart 请求 (OpenAI兼容格式)
                 val mediaType = "audio/wav".toMediaType()
                 val requestBody = audioFile.asRequestBody(mediaType)
 
                 val multipartBody = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .addFormDataPart("file", audioFile.name, requestBody)
-                    .addFormDataPart("model", "paraformer")
+                    .addFormDataPart("model", SPEECH_MODEL)
+                    .addFormDataPart("language", "zh") // 指定中文
                     .build()
 
-                // 打印请求body内容
-                val modelParam = "paraformer"
-                Log.d(TAG, "========== 请求参数 ==========")
-                Log.d(TAG, "URL: $ZHIPU_API_URL")
-                Log.d(TAG, "Authorization: Bearer ${ZHIPU_API_KEY.take(20)}...")
-                Log.d(TAG, "file: ${audioFile.name} (size=${audioFile.length()} bytes)")
-                Log.d(TAG, "model: $modelParam")
-                Log.d(TAG, "========== 请求参数结束 ==========")
+                // 打印请求参数
+                Log.d(TAG, "========== 语音识别请求 ==========")
+                Log.d(TAG, "API: Groq Whisper (免费)")
+                Log.d(TAG, "URL: $SPEECH_API_URL")
+                Log.d(TAG, "Model: $SPEECH_MODEL")
+                Log.d(TAG, "File: ${audioFile.name} (${audioFile.length()} bytes)")
+                Log.d(TAG, "========== 请求发送 ==========")
 
                 val request = Request.Builder()
-                    .url(ZHIPU_API_URL)
-                    .addHeader("Authorization", "Bearer $ZHIPU_API_KEY")
+                    .url(SPEECH_API_URL)
+                    .addHeader("Authorization", "Bearer $SPEECH_API_KEY")
                     .post(multipartBody)
                     .build()
 
                 val response = okHttpClient.newCall(request).execute()
 
                 val responseBody = response.body?.string()
-                Log.d(TAG, "sendToZhipuAPI: HTTP状态码=${response.code}")
-                Log.d(TAG, "sendToZhipuAPI: 响应体=$responseBody")
+                Log.d(TAG, "sendToSpeechAPI: HTTP状态码=${response.code}")
+                Log.d(TAG, "sendToSpeechAPI: 响应体=$responseBody")
 
                 withContext(Dispatchers.Main) {
                     if (response.isSuccessful && responseBody != null) {
@@ -1830,26 +1832,26 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                             val jsonObject = JsonParser.parseString(responseBody).asJsonObject
                             val text = jsonObject.get("text")?.asString ?: "未识别到文本"
 
-                            Log.d(TAG, "sendToZhipuAPI: 识别结果=$text")
+                            Log.d(TAG, "sendToSpeechAPI: 识别结果=$text")
                             Toast.makeText(this@MainActivity, "识别结果: $text", Toast.LENGTH_LONG).show()
 
                             // 打印完整的 API 返回
-                            Log.d(TAG, "========== 智谱API返回 ==========")
-                            Log.d(TAG, responseBody)
+                            Log.d(TAG, "========== 语音识别结果 ==========")
+                            Log.d(TAG, "识别文本: $text")
                             Log.d(TAG, "================================")
 
                         } catch (e: Exception) {
-                            Log.e(TAG, "sendToZhipuAPI: JSON解析错误", e)
+                            Log.e(TAG, "sendToSpeechAPI: JSON解析错误", e)
                             Toast.makeText(this@MainActivity, "解析响应失败", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        Log.e(TAG, "sendToZhipuAPI: API调用失败 code=${response.code}")
+                        Log.e(TAG, "sendToSpeechAPI: API调用失败 code=${response.code}")
                         Toast.makeText(this@MainActivity, "API调用失败: ${response.code}", Toast.LENGTH_SHORT).show()
                     }
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "sendToZhipuAPI: 调用API异常", e)
+                Log.e(TAG, "sendToSpeechAPI: 调用API异常", e)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@MainActivity, "API调用异常: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
