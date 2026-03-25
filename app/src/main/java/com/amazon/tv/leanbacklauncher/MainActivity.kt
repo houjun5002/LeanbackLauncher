@@ -146,7 +146,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         val JSONFILE = LauncherApp.context.cacheDir?.absolutePath + "/weather.json"
 
         // 智谱AI API配置
-        private const val ZHIPU_API_KEY = "YOUR_ZHIPU_API_KEY" // 请替换为你的智谱API Key
+        private const val ZHIPU_API_KEY = "a8789687e66c4e15a0071fe775caef5f.KmV5E6KIIzPjBmaE" // 请替换为你的智谱API Key
         private const val ZHIPU_API_URL = "https://open.bigmodel.cn/api/paas/v4/audio/transcriptions"
 
         // 录音配置
@@ -1431,6 +1431,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         if (!(homeAdapter == null || homeAdapter!!.isUiVisible || mDelayFirstRecommendationsVisible)) {
             homeAdapter?.onUiVisible()
         }
+        startMyVoiceAssistant()
     }
 
     override fun onEnterAnimationComplete() {
@@ -1743,11 +1744,11 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             it.write("fmt ".toByteArray())
             it.write(intToByteArray(16, 4)) // Subchunk1Size
             it.write(intToByteArray(1, 2))  // AudioFormat (PCM)
-            it.write(intToByteArray(channels, 2)) // NumChannels
-            it.write(intToByteArray(sampleRate, 4)) // SampleRate
-            it.write(intToByteArray(byteRate, 4))   // ByteRate
-            it.write(intToByteArray(blockAlign, 2)) // BlockAlign
-            it.write(intToByteArray(bitsPerSample, 2)) // BitsPerSample
+            it.write(intToByteArray(channels.toLong(), 2)) // NumChannels
+            it.write(intToByteArray(sampleRate.toLong(), 4)) // SampleRate
+            it.write(intToByteArray(byteRate.toLong(), 4))   // ByteRate
+            it.write(intToByteArray(blockAlign.toLong(), 2)) // BlockAlign
+            it.write(intToByteArray(bitsPerSample.toLong(), 2)) // BitsPerSample
 
             // data chunk
             it.write("data".toByteArray())
