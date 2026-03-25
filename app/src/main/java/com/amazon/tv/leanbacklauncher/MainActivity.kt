@@ -159,7 +159,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         private const val SAMPLE_RATE = 16000
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
-        private const val MAX_RECORD_DURATION = 10000L // 最大录音时长30秒
+        private const val MAX_RECORD_DURATION = 8000L // 最大录音时长8秒
         private const val LONG_PRESS_DURATION = 2000L // 长按2秒触发BLE扫描
 
         fun isMediaKey(keyCode: Int): Boolean {
@@ -1609,12 +1609,9 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         // 音频编码: IMA-ADPCM (16kHz 单声道)
         // 
         // 关键：必须让系统处理按键以建立 BLE 音频通道！
-        // 长按语音键时，系统会自动建立 BLE 音频连接
-        // 然后 AudioRecord.MIC 就能读取到遥控器麦克风数据
         
         if (keyCode == KeyEvent.KEYCODE_SEARCH || keyCode == KeyEvent.KEYCODE_VOICE_ASSIST) {
             Log.d(TAG, "onKeyDown: 检测到语音按键 keyCode=$keyCode")
-            Log.d(TAG, "onKeyDown: 让系统处理按键，建立BLE音频通道...")
             voiceKeyDownTime = System.currentTimeMillis()
             
             // 如果正在录音，停止录音
@@ -1624,16 +1621,16 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 return true
             }
             
-            // 延迟启动录音，让系统有时间建立BLE音频通道
-            // Remote X5 需要系统先建立 GATT Voice 连接
+            // 按一下就开始录音
+            // 让系统处理按键建立BLE通道，然后立即启动录音
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 if (!isRecording) {
-                    Log.d(TAG, "onKeyDown: 延迟后启动录音")
+                    Log.d(TAG, "onKeyDown: 启动录音（8秒自动停止）")
                     startMyVoiceAssistant()
                 }
-            }, 800) // 延迟800ms让系统建立BLE音频通道
+            }, 300) // 缩短延迟到300ms
             
-            // 不拦截！让系统处理按键，建立BLE音频通道
+            // 不拦截，让系统处理按键建立BLE音频通道
             return super.onKeyDown(keyCode, event)
         }
 
@@ -1665,13 +1662,8 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 return true
             }
             
-            // 短按释放：停止录音
-            if (isRecording) {
-                Log.d(TAG, "onKeyUp: 停止录音")
-                stopRecording()
-                return true
-            }
-            
+            // 短按释放：不做任何操作
+            // 录音会在8秒后自动停止
             return true
         }
         
@@ -2263,7 +2255,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     Toast.LENGTH_LONG
                 ).show()
             } else {
-                Toast.makeText(this, "正在录音，请说话...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "正在录音（8秒）...", Toast.LENGTH_SHORT).show()
             }
 
             // 使用协程进行录音
