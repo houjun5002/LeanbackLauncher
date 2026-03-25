@@ -146,11 +146,11 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         const val PERMISSIONS_REQUEST_RECORD_AUDIO = 100
         val JSONFILE = LauncherApp.context.cacheDir?.absolutePath + "/weather.json"
 
-        // 语音识别API配置 (使用Groq免费API)
-        // 注册地址: https://console.groq.com
-        private const val SPEECH_API_KEY = "YOUR_API_KEY"
-        private const val SPEECH_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
-        private const val SPEECH_MODEL = "whisper-large-v3"
+        // 语音识别API配置 (使用Hugging Face免费API)
+        // 注册地址: https://huggingface.co (免费，无需信用卡)
+        // 获取Token: Settings -> Access Tokens -> New token
+        private const val SPEECH_API_KEY = "hf_YOUR_HUGGINGFACE_TOKEN" // 请替换为你的Hugging Face Token
+        private const val SPEECH_API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3"
 
         // 录音配置
         private const val SAMPLE_RATE = 16000
@@ -1794,29 +1794,22 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                // 构建 multipart 请求 (OpenAI兼容格式)
-                val mediaType = "audio/wav".toMediaType()
-                val requestBody = audioFile.asRequestBody(mediaType)
-
-                val multipartBody = MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart("file", audioFile.name, requestBody)
-                    .addFormDataPart("model", SPEECH_MODEL)
-                    .addFormDataPart("language", "zh") // 指定中文
-                    .build()
+                // Hugging Face API: 直接发送二进制音频数据
+                val audioBytes = audioFile.readBytes()
+                val requestBody = audioBytes.toRequestBody("audio/wav".toMediaType())
 
                 // 打印请求参数
                 Log.d(TAG, "========== 语音识别请求 ==========")
-                Log.d(TAG, "API: Groq Whisper (免费)")
+                Log.d(TAG, "API: Hugging Face Whisper (免费)")
                 Log.d(TAG, "URL: $SPEECH_API_URL")
-                Log.d(TAG, "Model: $SPEECH_MODEL")
                 Log.d(TAG, "File: ${audioFile.name} (${audioFile.length()} bytes)")
                 Log.d(TAG, "========== 请求发送 ==========")
 
                 val request = Request.Builder()
                     .url(SPEECH_API_URL)
                     .addHeader("Authorization", "Bearer $SPEECH_API_KEY")
-                    .post(multipartBody)
+                    .addHeader("Content-Type", "audio/wav")
+                    .post(requestBody)
                     .build()
 
                 val response = okHttpClient.newCall(request).execute()
