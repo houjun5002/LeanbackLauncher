@@ -1837,28 +1837,32 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                     val report = bleScanner.generateReport(discoveredDevice)
                     Log.d(TAG, report)
                     
-                    // 查找可能的音频特征
-                    val audioChars = discoveredDevice.services
-                        .flatMap { it.characteristics }
-                        .filter { it.isAudioRelated }
+                    // 查找 HID 服务中的音频特征
+                    val hidService = discoveredDevice.services.find { 
+                        it.uuid == "00001812-0000-1000-8000-00805f9b34fb" 
+                    }
+                    
+                    val notifyChars = hidService?.characteristics?.filter { 
+                        it.propertiesStr.contains("NOTIFY") 
+                    } ?: emptyList()
                     
                     withContext(Dispatchers.Main) {
-                        if (audioChars.isNotEmpty()) {
-                            val message = buildString {
-                                append("发现可能的音频特征:\n")
-                                audioChars.forEach { char ->
-                                    append("• ${char.uuid.substring(0, 8)}...\n")
-                                    append("  属性: ${char.propertiesStr}\n")
-                                }
+                        val message = buildString {
+                            append("BLE扫描完成\n\n")
+                            append("HID服务特征:\n")
+                            notifyChars.forEach { char ->
+                                append("• ${char.uuid.substring(0, 8)}...\n")
+                                append("  ${char.propertiesStr}\n")
                             }
-                            Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
-                        } else {
-                            Toast.makeText(
-                                this@MainActivity, 
-                                "扫描完成，未发现明显的音频特征\n详细信息已输出到日志", 
-                                Toast.LENGTH_LONG
-                            ).show()
+                            append("\n查看日志获取详细信息")
                         }
+                        Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
+                    }
+                    
+                    // 尝试读取 HID 特征值
+                    if (hidService != null) {
+                        Log.d(TAG, "========== 尝试读取 HID 特征值 ==========")
+                        tryReadHidCharacteristics(device)
                     }
                 }.onFailure { e ->
                     Log.e(TAG, "scanBleDevices: 扫描设备失败", e)
@@ -1876,6 +1880,25 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@MainActivity, "扫描异常: ${e.message}", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    /**
+     * 尝试读取 HID 服务的特征值
+     */
+    private suspend fun tryReadHidCharacteristics(device: android.bluetooth.BluetoothDevice) {
+        try {
+            val bleReader = com.amazon.tv.leanbacklauncher.ble.BleAudioReader(this)
+            val result = bleReader.connectAndFindAudio(device)
+            
+            result.onSuccess { message ->
+                Log.d(TAG, "tryReadHidCharacteristics: $message")
+            }.onFailure { e ->
+                Log.e(TAG, "tryReadHidCharacteristics: 失败", e)
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "tryReadHidCharacteristics: 异常", e)
         }
     }
 
