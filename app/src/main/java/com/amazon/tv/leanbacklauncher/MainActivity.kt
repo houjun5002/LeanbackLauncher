@@ -1637,8 +1637,86 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         // 检测音频输入设备
         logAudioInputDevices()
         
-        // 开始录音
-        startRecording()
+        // 尝试启动蓝牙SCO音频连接
+        startBluetoothScoAudio()
+    }
+    
+    /**
+     * 启动蓝牙SCO音频连接
+     * 语音遥控器的音频通过SCO协议传输，需要手动启动
+     */
+    private var audioManager: android.media.AudioManager? = null
+    private var isBluetoothScoConnected = false
+    
+    private fun startBluetoothScoAudio() {
+        try {
+            Log.d(TAG, "startBluetoothScoAudio: 尝试启动蓝牙SCO音频")
+            
+            audioManager = getSystemService(android.media.AudioManager::class.java)
+            
+            // 注册SCO状态监听
+            val filter = android.content.IntentFilter(android.media.AudioManager.ACTION_SCO_AUDIO_STATE_CHANGED)
+            registerReceiver(scoStateReceiver, filter)
+            
+            // 启动SCO音频连接
+            audioManager?.startBluetoothSco()
+            audioManager?.isBluetoothScoAvailableOnCall = true
+            
+            Log.d(TAG, "startBluetoothScoAudio: 已请求启动SCO，等待连接...")
+            
+            // 设置超时：如果2秒内没有连接成功，直接使用内置麦克风
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (!isRecording) {
+                    Log.d(TAG, "startBluetoothScoAudio: SCO连接超时，使用当前可用麦克风")
+                    logAudioInputDevices()
+                    startRecording()
+                }
+            }, 2000)
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "startBluetoothScoAudio: 启动失败", e)
+            // 直接开始录音
+            startRecording()
+        }
+    }
+    
+    private val scoStateReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            val state = intent?.getIntExtra(android.media.AudioManager.EXTRA_SCO_AUDIO_STATE, -1)
+            Log.d(TAG, "scoStateReceiver: SCO状态变化 state=$state")
+            
+            when (state) {
+                android.media.AudioManager.SCO_AUDIO_STATE_CONNECTED -> {
+                    Log.d(TAG, "scoStateReceiver: 蓝牙SCO已连接 ✓")
+                    isBluetoothScoConnected = true
+                    // SCO连接成功，重新检测设备
+                    logAudioInputDevices()
+                    startRecording()
+                }
+                android.media.AudioManager.SCO_AUDIO_STATE_DISCONNECTED -> {
+                    Log.d(TAG, "scoStateReceiver: 蓝牙SCO已断开")
+                    isBluetoothScoConnected = false
+                }
+                android.media.AudioManager.SCO_AUDIO_STATE_CONNECTING -> {
+                    Log.d(TAG, "scoStateReceiver: 蓝牙SCO正在连接...")
+                }
+            }
+        }
+    }
+    
+    private fun stopBluetoothScoAudio() {
+        try {
+            audioManager?.stopBluetoothSco()
+            try {
+                unregisterReceiver(scoStateReceiver)
+            } catch (e: Exception) {
+                // 忽略未注册的异常
+            }
+            isBluetoothScoConnected = false
+            Log.d(TAG, "stopBluetoothScoAudio: 已停止蓝牙SCO")
+        } catch (e: Exception) {
+            Log.e(TAG, "stopBluetoothScoAudio: 停止失败", e)
+        }
     }
 
     /**
@@ -1820,6 +1898,9 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
 
         recordingJob?.cancel()
         recordingJob = null
+        
+        // 停止蓝牙SCO音频
+        stopBluetoothScoAudio()
     }
 
     /**
