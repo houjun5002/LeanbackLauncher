@@ -2062,7 +2062,34 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             isRecording = true
             audioRecord?.startRecording()
 
-            Toast.makeText(this, "正在录音，请说话...", Toast.LENGTH_SHORT).show()
+            // ========== 麦克风预热测试 ==========
+            // 读取几帧数据测试麦克风是否真的工作
+            Log.d(TAG, "startRecording: 麦克风预热测试...")
+            val testBuffer = ByteArray(bufferSize)
+            var testMaxAmp = 0
+            for (i in 0 until 5) {  // 读取5帧测试
+                val read = audioRecord?.read(testBuffer, 0, bufferSize) ?: 0
+                if (read > 0) {
+                    for (j in 0 until read step 2) {
+                        val sample = (testBuffer[j].toInt() and 0xFF) or (testBuffer[j + 1].toInt() shl 8)
+                        val amp = kotlin.math.abs(sample)
+                        if (amp > testMaxAmp) testMaxAmp = amp
+                    }
+                }
+                Thread.sleep(50)
+            }
+            Log.d(TAG, "startRecording: 麦克风预热测试完成，最大振幅=$testMaxAmp")
+            
+            if (testMaxAmp == 0) {
+                Log.w(TAG, "startRecording: 麦克风可能不可用！")
+                Toast.makeText(
+                    this, 
+                    "警告：麦克风可能不可用\n可能原因：\n1. 电视棒无物理麦克风\n2. 电视麦克风无法传递给电视棒\n建议：使用USB麦克风", 
+                    Toast.LENGTH_LONG
+                ).show()
+            } else {
+                Toast.makeText(this, "正在录音，请说话...", Toast.LENGTH_SHORT).show()
+            }
 
             // 使用协程进行录音
             recordingJob = lifecycleScope.launch(Dispatchers.IO) {
@@ -2078,6 +2105,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 var totalFrameCount = 0
                 val startTime = System.currentTimeMillis()
                 var lastVolumeLogTime = startTime
+                var warningShown = false  // 是否已显示过警告
 
                 try {
                     while (isRecording && (System.currentTimeMillis() - startTime) < MAX_RECORD_DURATION) {
@@ -2119,6 +2147,18 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                                 }
                                 Log.d(TAG, "音量: $volumeBar $volumePercent% (振幅=$frameMaxAmp)")
                                 lastVolumeLogTime = currentTime
+                                
+                                // 如果前3秒一直是静音，提前警告用户
+                                if (!warningShown && maxAmplitude == 0 && (currentTime - startTime) > 3000) {
+                                    warningShown = true
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(
+                                            this@MainActivity,
+                                            "未检测到音频输入！\n可能原因：\n1. 电视棒无物理麦克风\n2. 电视麦克风无法传递给电视棒\n建议：使用USB麦克风",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
                             }
                         }
                     }
