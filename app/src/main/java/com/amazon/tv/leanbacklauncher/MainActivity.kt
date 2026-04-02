@@ -2624,6 +2624,13 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 intent = "理财",
                 packageName = "com.bank.app5",
                 keywords = listOf("理财", "基金", "股票", "养老金", "投资理财", "个人理财", "财富管理", "理财规划", "稳健理财", "活期理财", "定期理财", "基金理财", "买基金", "基金定投", "指数基金", "货币基金", "债券基金", "基金赎回", "股票交易", "炒股", "买股票", "股票持仓", "A股", "港股", "美股", "股票行情", "养老金理财", "养老投资", "个人养老金", "养老基金", "养老理财", "债券", "保险理财", "贵金属", "外汇", "信托", "私募", "定投", "理财收益", "资产配置")
+            ),
+            VoiceIntent(
+                intent = "电视",
+                packageName = "com.xiaodianshi.tv.yst",
+                keywords = listOf(
+                    "看电视", "刷视频", "打开电视", "开启电视", "电视节目", "看B站", "打开B站", "哔哩哔哩", "看bilibili", "看抖音", "看视频", "刷抖音", "看快手", "打开快手", "刷快手", "看视频", "打开视频"
+                )
             )
         )
         
@@ -2644,7 +2651,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         
         if (matchedIntent != null) {
             Log.d(TAG, "handleVoiceIntent: 匹配成功! 意图=${matchedIntent.intent}, 关键词=$matchedKeyword, 包名=${matchedIntent.packageName}")
-            Toast.makeText(this, "正在打开${matchedIntent.intent}...", Toast.LENGTH_SHORT).show()
+            //Toast.makeText(this, "正在打开${matchedIntent.intent}...", Toast.LENGTH_SHORT).show()
             openAppByPackage(matchedIntent.packageName, matchedIntent.intent)
         } else {
             Log.d(TAG, "handleVoiceIntent: 未匹配到意图")
