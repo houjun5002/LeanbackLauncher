@@ -2629,7 +2629,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 intent = "电视",
                 packageName = "com.xiaodianshi.tv.yst",
                 keywords = listOf(
-                    "看电视", "刷视频", "打开电视", "开启电视", "电视节目", "看B站", "打开B站", "哔哩哔哩", "看bilibili", "看抖音", "看视频", "刷抖音", "看快手", "打开快手", "刷快手", "看视频", "打开视频"
+                    "电视","电影", "视频", "打开电视", "开启电视", "电视节目", "看B站", "打开B站", "哔哩哔哩", "看bilibili", "看抖音", "看视频", "刷抖音", "看快手", "打开快手", "刷快手", "打开视频", "音乐"
                 )
             )
         )
