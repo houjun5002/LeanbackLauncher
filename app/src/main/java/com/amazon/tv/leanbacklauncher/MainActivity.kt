@@ -145,6 +145,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         private const val UNINSTALL_CODE = 321
         const val PERMISSIONS_REQUEST_LOCATION = 99
         const val PERMISSIONS_REQUEST_RECORD_AUDIO = 100
+        const val PERMISSIONS_REQUEST_READ_PHONE_STATE = 101
         val JSONFILE = LauncherApp.context.cacheDir?.absolutePath + "/weather.json"
 
         // 语音识别API配置 (使用百度语音识别API - 国内免费)
@@ -415,6 +416,10 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
     @SuppressLint("WrongConstant")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // 获取并打印设备 SN（序列号）
+        getDeviceSerialNumber()
+        
         mContentResolver = contentResolver
 
         if (mRecommendationsAdapter == null) {
@@ -600,6 +605,44 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 getWeatherApiKey(this)
             )
             // initializeWeather() // already in addWidget()
+        }
+    }
+
+    /**
+     * 获取并打印设备 SN（序列号）
+     * 注意：Android 10+ 需要特殊权限才能获取真实序列号
+     */
+    @SuppressLint("HardwareIds")
+    private fun getDeviceSerialNumber() {
+        try {
+            val serial: String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+ 使用 Build.getSerial()
+                if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+                    Build.getSerial()
+                } else {
+                    // 没有权限，尝试其他方式
+                    Build.SERIAL
+                }
+            } else {
+                // Android 10 以下
+                Build.SERIAL
+            }
+            
+            Log.d(TAG, "========== 设备信息 ==========")
+            Log.d(TAG, "设备 SN (Serial Number): $serial")
+            Log.d(TAG, "设备型号: ${Build.MODEL}")
+            Log.d(TAG, "设备制造商: ${Build.MANUFACTURER}")
+            Log.d(TAG, "设备品牌: ${Build.BRAND}")
+            Log.d(TAG, "Android 版本: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+            Log.d(TAG, "设备名称: ${Build.DEVICE}")
+            Log.d(TAG, "Android ID: ${Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)}")
+            Log.d(TAG, "===============================")
+            
+            if (serial == "unknown" || serial.isNullOrEmpty() || serial == "UNKNOWN") {
+                Log.w(TAG, "getDeviceSerialNumber: 无法获取真实序列号，可能需要 READ_PHONE_STATE 权限或设备所有者权限")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "getDeviceSerialNumber: 获取设备SN失败", e)
         }
     }
 
