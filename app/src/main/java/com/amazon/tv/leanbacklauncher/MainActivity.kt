@@ -610,39 +610,59 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
 
     /**
      * 获取并打印设备 SN（序列号）
-     * 注意：Android 10+ 需要特殊权限才能获取真实序列号
+     * 注意：Android 10+ 普通应用无法获取真实序列号，使用 Android ID 作为替代
      */
     @SuppressLint("HardwareIds")
     private fun getDeviceSerialNumber() {
         try {
-            val serial: String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ 使用 Build.getSerial()
-                if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-                    Build.getSerial()
-                } else {
-                    // 没有权限，尝试其他方式
-                    Build.SERIAL
+            var serial = ""
+            var serialSource = ""
+            
+            // 尝试获取设备序列号（Android 10+ 需要特殊权限）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                try {
+                    if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+                        serial = Build.getSerial()
+                        serialSource = "Build.getSerial() (有权限)"
+                    } else {
+                        // 没有权限，尝试获取（会抛出异常）
+                        serial = Build.getSerial()
+                        serialSource = "Build.getSerial() (无权限，可能返回 unknown)"
+                    }
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "getDeviceSerialNumber: Build.getSerial() 被拒绝，需要特殊权限")
+                    serial = "unknown"
+                    serialSource = "Build.getSerial() - SecurityException"
                 }
             } else {
                 // Android 10 以下
-                Build.SERIAL
+                serial = Build.SERIAL
+                serialSource = "Build.SERIAL"
             }
             
+            // 如果序列号是 unknown，使用 Android ID 作为替代
+            val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
+            val useAndroidId = serial == "unknown" || serial == "UNKNOWN" || serial.isNullOrEmpty()
+            
+            val finalSerial = if (useAndroidId) androidId else serial
+            val finalSource = if (useAndroidId) "Android ID (替代序列号)" else serialSource
+            
             Log.d(TAG, "========== 设备信息 ==========")
-            Log.d(TAG, "设备 SN (Serial Number): $serial")
+            Log.d(TAG, "设备唯一标识: $finalSerial")
+            Log.d(TAG, "标识来源: $finalSource")
             Log.d(TAG, "设备型号: ${Build.MODEL}")
             Log.d(TAG, "设备制造商: ${Build.MANUFACTURER}")
             Log.d(TAG, "设备品牌: ${Build.BRAND}")
             Log.d(TAG, "Android 版本: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             Log.d(TAG, "设备名称: ${Build.DEVICE}")
-            Log.d(TAG, "Android ID: ${Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)}")
+            Log.d(TAG, "Android ID: $androidId")
+            if (serial != "unknown" && serial != "UNKNOWN" && !serial.isNullOrEmpty()) {
+                Log.d(TAG, "真实序列号 (Build.SERIAL): $serial")
+            }
             Log.d(TAG, "===============================")
             
-            if (serial == "unknown" || serial.isNullOrEmpty() || serial == "UNKNOWN") {
-                Log.w(TAG, "getDeviceSerialNumber: 无法获取真实序列号，可能需要 READ_PHONE_STATE 权限或设备所有者权限")
-            }
         } catch (e: Exception) {
-            Log.e(TAG, "getDeviceSerialNumber: 获取设备SN失败", e)
+            Log.e(TAG, "getDeviceSerialNumber: 获取设备信息失败", e)
         }
     }
 
