@@ -647,6 +647,12 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             val finalSerial = if (useAndroidId) androidId else serial
             val finalSource = if (useAndroidId) "Android ID (替代序列号)" else serialSource
             
+            // 获取 WiFi 信息
+            val wifiInfo = getWifiInfo()
+            
+            // 获取蓝牙 MAC 地址
+            val bluetoothMac = getBluetoothMac()
+            
             Log.d(TAG, "========== 设备信息 ==========")
             Log.d(TAG, "设备唯一标识: $finalSerial")
             Log.d(TAG, "标识来源: $finalSource")
@@ -656,6 +662,19 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             Log.d(TAG, "Android 版本: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             Log.d(TAG, "设备名称: ${Build.DEVICE}")
             Log.d(TAG, "Android ID: $androidId")
+            
+            // WiFi 信息
+            Log.d(TAG, "---------- WiFi 信息 ----------")
+            Log.d(TAG, "SSID: ${wifiInfo.ssid}")
+            Log.d(TAG, "BSSID (路由器MAC): ${wifiInfo.bssid}")
+            Log.d(TAG, "IP 地址: ${wifiInfo.ipAddress}")
+            Log.d(TAG, "MAC 地址: ${wifiInfo.macAddress}")
+            Log.d(TAG, "信号强度: ${wifiInfo.signalStrength} dBm")
+            
+            // 蓝牙信息
+            Log.d(TAG, "---------- 蓝牙信息 ----------")
+            Log.d(TAG, "蓝牙 MAC 地址: $bluetoothMac")
+            
             if (serial != "unknown" && serial != "UNKNOWN" && !serial.isNullOrEmpty()) {
                 Log.d(TAG, "真实序列号 (Build.SERIAL): $serial")
             }
@@ -665,6 +684,78 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             Log.e(TAG, "getDeviceSerialNumber: 获取设备信息失败", e)
         }
     }
+    
+    /**
+     * 获取 WiFi 信息
+     */
+    @SuppressLint("HardwareIds", "MissingPermission")
+    private fun getWifiInfo(): WifiInfoData {
+        val data = WifiInfoData()
+        try {
+            val wifiManager = getSystemService(android.net.wifi.WifiManager::class.java)
+            if (wifiManager != null) {
+                val info = wifiManager.connectionInfo
+                if (info != null) {
+                    // SSID（WiFi 名称）
+                    data.ssid = info.ssid?.replace("\"", "") ?: "unknown"
+                    
+                    // BSSID（路由器 MAC 地址）
+                    data.bssid = info.bssid ?: "unknown"
+                    
+                    // MAC 地址（Android 6.0+ 返回 02:00:00:00:00:00）
+                    data.macAddress = info.macAddress ?: "unknown"
+                    
+                    // IP 地址
+                    val ip = info.ipAddress
+                    data.ipAddress = if (ip != 0) {
+                        String.format("%d.%d.%d.%d",
+                            ip and 0xFF,
+                            ip shr 8 and 0xFF,
+                            ip shr 16 and 0xFF,
+                            ip shr 24 and 0xFF)
+                    } else {
+                        "unknown"
+                    }
+                    
+                    // 信号强度
+                    data.signalStrength = info.rssi
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getWifiInfo: 获取 WiFi 信息失败", e)
+        }
+        return data
+    }
+    
+    /**
+     * 获取蓝牙 MAC 地址
+     */
+    @SuppressLint("HardwareIds", "MissingPermission")
+    private fun getBluetoothMac(): String {
+        return try {
+            val bluetoothManager = getSystemService(android.bluetooth.BluetoothManager::class.java)
+            if (bluetoothManager != null) {
+                val adapter = bluetoothManager.adapter
+                adapter?.address ?: "unknown"
+            } else {
+                "unknown"
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getBluetoothMac: 获取蓝牙 MAC 失败", e)
+            "unknown"
+        }
+    }
+    
+    /**
+     * WiFi 信息数据类
+     */
+    private data class WifiInfoData(
+        var ssid: String = "unknown",
+        var bssid: String = "unknown",
+        var macAddress: String = "unknown",
+        var ipAddress: String = "unknown",
+        var signalStrength: Int = 0
+    )
 
     public override fun onDestroy() {
         if (BuildConfig.DEBUG) Log.d(TAG, "onDestroy()")
