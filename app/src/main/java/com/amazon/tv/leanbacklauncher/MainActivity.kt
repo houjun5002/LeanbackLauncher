@@ -122,10 +122,12 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.BufferedReader
 import java.io.File
 import java.io.FileDescriptor
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStreamReader
 import java.io.PrintWriter
 import java.lang.String.format
 import java.lang.ref.WeakReference
@@ -618,26 +620,44 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             var serial = ""
             var serialSource = ""
             
-            // 尝试获取设备序列号（Android 10+ 需要特殊权限）
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                try {
-                    if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-                        serial = Build.getSerial()
-                        serialSource = "Build.getSerial() (有权限)"
-                    } else {
-                        // 没有权限，尝试获取（会抛出异常）
-                        serial = Build.getSerial()
-                        serialSource = "Build.getSerial() (无权限，可能返回 unknown)"
-                    }
-                } catch (e: SecurityException) {
-                    Log.w(TAG, "getDeviceSerialNumber: Build.getSerial() 被拒绝，需要特殊权限")
-                    serial = "unknown"
-                    serialSource = "Build.getSerial() - SecurityException"
+            // 检查设备是否已 root
+            val isRooted = RootUtil.isDeviceRooted()
+            val hasRootPermission = RootUtil.hasRootPermission()
+            
+            Log.d(TAG, "---------- Root 状态 ----------")
+            Log.d(TAG, "设备是否已 Root: $isRooted")
+            Log.d(TAG, "App 是否有 Root 权限: $hasRootPermission")
+            
+            // 如果有 root 权限，优先使用 getprop ro.serialno 获取真实序列号
+            if (hasRootPermission) {
+                val rootSn = getRealSNWithRoot()
+                if (rootSn != "unknown" && rootSn.isNotEmpty()) {
+                    serial = rootSn
+                    serialSource = "getprop ro.serialno (Root)"
+                    Log.d(TAG, "通过 Root 获取真实序列号成功: $serial")
                 }
-            } else {
-                // Android 10 以下
-                serial = Build.SERIAL
-                serialSource = "Build.SERIAL"
+            }
+            
+            // 如果没有 root 或 root 获取失败，使用标准方法
+            if (serial.isEmpty()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    try {
+                        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+                            serial = Build.getSerial()
+                            serialSource = "Build.getSerial() (有权限)"
+                        } else {
+                            serial = Build.getSerial()
+                            serialSource = "Build.getSerial() (无权限，可能返回 unknown)"
+                        }
+                    } catch (e: SecurityException) {
+                        Log.w(TAG, "getDeviceSerialNumber: Build.getSerial() 被拒绝，需要特殊权限")
+                        serial = "unknown"
+                        serialSource = "Build.getSerial() - SecurityException"
+                    }
+                } else {
+                    serial = Build.SERIAL
+                    serialSource = "Build.SERIAL"
+                }
             }
             
             // 如果序列号是 unknown，使用 Android ID 作为替代
@@ -676,12 +696,30 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             Log.d(TAG, "蓝牙 MAC 地址: $bluetoothMac")
             
             if (serial != "unknown" && serial != "UNKNOWN" && !serial.isNullOrEmpty()) {
-                Log.d(TAG, "真实序列号 (Build.SERIAL): $serial")
+                Log.d(TAG, "真实序列号: $serial")
             }
             Log.d(TAG, "===============================")
             
         } catch (e: Exception) {
             Log.e(TAG, "getDeviceSerialNumber: 获取设备信息失败", e)
+        }
+    }
+    
+    /**
+     * 通过 Root 权限获取真实序列号
+     * 使用 getprop ro.serialno 命令
+     */
+    private fun getRealSNWithRoot(): String {
+        return try {
+            val process = Runtime.getRuntime().exec("su -c getprop ro.serialno")
+            val reader = process.inputStream.bufferedReader()
+            val sn = reader.readLine()?.trim() ?: "unknown"
+            process.waitFor()
+            reader.close()
+            sn
+        } catch (e: Exception) {
+            Log.w(TAG, "getRealSNWithRoot: 通过 Root 获取序列号失败", e)
+            "unknown"
         }
     }
     
@@ -3132,5 +3170,44 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
         }
         return false
     }
-
 }
+
+/**
+ * Root 权限工具类
+ */
+object RootUtil {
+
+    /**
+     * 判断 App 是否拥有 Root 权限
+     * true = 已授权
+     * false = 未授权 / 被拒绝 / 无法提权
+     */
+    fun hasRootPermission(): Boolean {
+        var process: Process? = null
+        return try {
+            process = Runtime.getRuntime().exec("su -c id")
+            val reader = BufferedReader(InputStreamReader(process.inputStream))
+            val output = reader.readText()
+            output.contains("uid=0") || output.contains("root")
+        } catch (e: Exception) {
+            false
+        } finally {
+            process?.destroy()
+        }
+    }
+
+    /**
+     * 判断设备是否 Root (不弹授权框)
+     */
+    fun isDeviceRooted(): Boolean {
+        val paths = arrayOf(
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/sbin/su",
+            "/vendor/bin/su",
+            "/su/bin/su"
+        )
+        return paths.any { java.io.File(it).exists() }
+    }
+}
+
