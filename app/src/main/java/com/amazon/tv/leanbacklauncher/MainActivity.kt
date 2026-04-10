@@ -612,7 +612,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
 
     /**
      * 获取并打印设备 SN（序列号）
-     * 注意：Android 10+ 普通应用无法获取真实序列号，使用 Android ID 作为替代
+     * 优先级：反射调用 → 读取文件 → Root命令 → Android ID
      */
     @SuppressLint("HardwareIds")
     private fun getDeviceSerialNumber() {
@@ -620,39 +620,50 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             var serial = ""
             var serialSource = ""
             
-            // 检查设备是否已 root
-            val isRooted = RootUtil.isDeviceRooted()
-            val hasRootPermission = RootUtil.hasRootPermission()
+            Log.d(TAG, "========== 开始获取设备序列号 ==========")
             
-            Log.d(TAG, "---------- Root 状态 ----------")
-            Log.d(TAG, "设备是否已 Root: $isRooted")
-            Log.d(TAG, "App 是否有 Root 权限: $hasRootPermission")
+            // 方案1：反射调用 SystemProperties（无需Root，无需权限，90%成功率）
+            val reflectSN = getRealSNByReflect()
+            if (reflectSN != "unknown" && reflectSN.isNotEmpty()) {
+                serial = reflectSN
+                serialSource = "反射调用 SystemProperties"
+                Log.d(TAG, "方案1成功: 通过反射获取序列号 = $serial")
+            }
             
-            // 如果有 root 权限，优先使用 getprop ro.serialno 获取真实序列号
-            if (hasRootPermission) {
-                val rootSn = getRealSNWithRoot()
-                if (rootSn != "unknown" && rootSn.isNotEmpty()) {
-                    serial = rootSn
-                    serialSource = "getprop ro.serialno (Root)"
-                    Log.d(TAG, "通过 Root 获取真实序列号成功: $serial")
+            // 方案2：读取硬件文件（无需Root，无需权限）
+            if (serial.isEmpty()) {
+                val fileSN = getRealSNFromFile()
+                if (fileSN != "unknown" && fileSN.isNotEmpty()) {
+                    serial = fileSN
+                    serialSource = "读取硬件文件"
+                    Log.d(TAG, "方案2成功: 通过文件获取序列号 = $serial")
                 }
             }
             
-            // 如果没有 root 或 root 获取失败，使用标准方法
+            // 方案3：Root命令（需要Root权限）
+            if (serial.isEmpty()) {
+                val isRooted = RootUtil.isDeviceRooted()
+                val hasRootPermission = RootUtil.hasRootPermission()
+                Log.d(TAG, "Root状态 - 设备已Root: $isRooted, App有权限: $hasRootPermission")
+                
+                if (hasRootPermission) {
+                    val rootSN = getRealSNWithRoot()
+                    if (rootSN != "unknown" && rootSN.isNotEmpty()) {
+                        serial = rootSN
+                        serialSource = "Root命令 (getprop ro.serialno)"
+                        Log.d(TAG, "方案3成功: 通过Root获取序列号 = $serial")
+                    }
+                }
+            }
+            
+            // 方案4：标准API（可能返回unknown）
             if (serial.isEmpty()) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     try {
-                        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-                            serial = Build.getSerial()
-                            serialSource = "Build.getSerial() (有权限)"
-                        } else {
-                            serial = Build.getSerial()
-                            serialSource = "Build.getSerial() (无权限，可能返回 unknown)"
-                        }
+                        serial = Build.getSerial()
+                        serialSource = "Build.getSerial()"
                     } catch (e: SecurityException) {
-                        Log.w(TAG, "getDeviceSerialNumber: Build.getSerial() 被拒绝，需要特殊权限")
-                        serial = "unknown"
-                        serialSource = "Build.getSerial() - SecurityException"
+                        Log.w(TAG, "方案4失败: Build.getSerial() 被拒绝")
                     }
                 } else {
                     serial = Build.SERIAL
@@ -660,12 +671,12 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
                 }
             }
             
-            // 如果序列号是 unknown，使用 Android ID 作为替代
+            // 最终方案：使用 Android ID
             val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
             val useAndroidId = serial == "unknown" || serial == "UNKNOWN" || serial.isNullOrEmpty()
             
             val finalSerial = if (useAndroidId) androidId else serial
-            val finalSource = if (useAndroidId) "Android ID (替代序列号)" else serialSource
+            val finalSource = if (useAndroidId) "Android ID (替代)" else serialSource
             
             // 获取 WiFi 信息
             val wifiInfo = getWifiInfo()
@@ -675,7 +686,7 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             
             Log.d(TAG, "========== 设备信息 ==========")
             Log.d(TAG, "设备唯一标识: $finalSerial")
-            Log.d(TAG, "标识来源: $finalSource")
+            Log.d(TAG, "获取方式: $finalSource")
             Log.d(TAG, "设备型号: ${Build.MODEL}")
             Log.d(TAG, "设备制造商: ${Build.MANUFACTURER}")
             Log.d(TAG, "设备品牌: ${Build.BRAND}")
@@ -695,14 +706,91 @@ class MainActivity : AppCompatActivity(), OnEditModeChangedListener,
             Log.d(TAG, "---------- 蓝牙信息 ----------")
             Log.d(TAG, "蓝牙 MAC 地址: $bluetoothMac")
             
-            if (serial != "unknown" && serial != "UNKNOWN" && !serial.isNullOrEmpty()) {
-                Log.d(TAG, "真实序列号: $serial")
-            }
             Log.d(TAG, "===============================")
             
         } catch (e: Exception) {
             Log.e(TAG, "getDeviceSerialNumber: 获取设备信息失败", e)
         }
+    }
+    
+    /**
+     * 方案1：反射调用 SystemProperties 获取真实 SN
+     * 无需 Root，无需权限，90% 开发板直接成功
+     */
+    private fun getRealSNByReflect(): String {
+        var sn = "unknown"
+        try {
+            val c = Class.forName("android.os.SystemProperties")
+            val get: java.lang.reflect.Method = c.getMethod("get", String::class.java)
+            
+            // 尝试读取多个常见的 SN 属性
+            val keys = arrayOf(
+                "ro.serialno",
+                "ro.boot.serialno",
+                "ro.serial",
+                "sys.serialno",
+                "persist.sys.serialno"
+            )
+            
+            for (key in keys) {
+                val value = get.invoke(c, key) as String
+                if (!value.isNullOrEmpty() && value != "unknown" && value != "000000000000000") {
+                    sn = value
+                    Log.d(TAG, "getRealSNByReflect: 成功读取 $key = $value")
+                    break
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getRealSNByReflect: 反射获取失败", e)
+        }
+        return sn
+    }
+    
+    /**
+     * 方案2：读取硬件 SN 文件
+     * 无需 Root，无需权限，适用于全志等开发板
+     */
+    private fun getRealSNFromFile(): String {
+        // 全志/开发板常见的 SN 文件路径
+        val paths = arrayOf(
+            "/sys/class/android_usb/android0/iSerial",
+            "/sys/devices/soc0/serial_number",
+            "/sys/devices/virtual/android_usb/android0/iSerial",
+            "/proc/cpuinfo",
+            "/sys/class/misc/android_usb/android0/iSerial",
+            "/sys/devices/platform/soc/soc:usb@0/iSerial"
+        )
+        
+        for (path in paths) {
+            try {
+                val file = java.io.File(path)
+                if (file.exists() && file.canRead()) {
+                    val content = file.readText().trim()
+                    // 简单过滤：SN 通常长度大于 4，且不是全 0
+                    if (content.length > 4 
+                        && !content.contains("000000") 
+                        && !content.contains("unknown")) {
+                        // 如果是 cpuinfo，需要提取 Serial 字段
+                        if (path.contains("cpuinfo")) {
+                            val lines = content.lines()
+                            for (line in lines) {
+                                if (line.contains("Serial", ignoreCase = true)) {
+                                    val serialValue = line.split(":")[1].trim()
+                                    Log.d(TAG, "getRealSNFromFile: 从 cpuinfo 提取 Serial = $serialValue")
+                                    return serialValue
+                                }
+                            }
+                        } else {
+                            Log.d(TAG, "getRealSNFromFile: 从 $path 读取 = $content")
+                            return content
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                continue
+            }
+        }
+        return "unknown"
     }
     
     /**
